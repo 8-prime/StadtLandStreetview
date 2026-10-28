@@ -69,9 +69,12 @@ docker run --rm -p 3000:3000 stadt-land-streetview
 Open `http://localhost:3000`. Docker installs the pinned pnpm version and frontend
 dependencies, then Cargo's build script builds the UI in HTTP mode and embeds it
 in a release executable. Dependency and Cargo caches speed up later builds. The
-final Debian image runs as an unprivileged user and contains only the executable
-and runtime libraries. It listens on `0.0.0.0:3000` inside the container and uses
-SIGINT for the existing graceful shutdown handler.
+final `scratch` image runs as an unprivileged user and contains the static musl
+executable and a CA certificate bundle. Both build stages use Alpine; the build
+explicitly enables static C-runtime linking and checks that the executable has
+neither an ELF interpreter nor shared-library dependencies before packaging it.
+No shell, package manager, or system C runtime is needed in the final image. It
+listens on `0.0.0.0:3000` and uses SIGINT for graceful shutdown.
 
 Supply the Google Maps browser key at build time:
 
