@@ -2,6 +2,21 @@
 
 A browser-based multiplayer game in which players explore Google Street View to find scenes that match categories created by the group. After a timed search, everyone reviews the submitted images and votes on whether they match. The player with the most accepted matches wins.
 
+## Development
+
+The desktop frontend is implemented in **Svelte 5 + TypeScript + Vite**, under [`frontend/`](frontend/). The backend is planned as a separate Rust/Axum application.
+
+```sh
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend dev
+```
+
+Open `http://localhost:5173` and choose **Try the solo demo** to walk through a game without a backend or Google Maps key. Ordinary local rooms can be joined from separate tabs in the same browser. Live Street View requires a restricted Maps JavaScript API browser key in `frontend/.env.local`.
+
+- [Frontend setup, Maps configuration, and checks](frontend/README.md)
+- [UI design preview — screenshots of every game phase](docs/ui-preview.md)
+- [Proposed Axum API contract](docs/api.md)
+
 ## Game overview
 
 The game has three main stages:
@@ -34,6 +49,8 @@ When the search timer expires, exploration and collection end. Before voting beg
 
 Only **one final image per player per category** moves on to review. This selection happens **after the search time is up**, so players do not need to make their final choices while searching.
 
+The first saved candidate is selected automatically. Players can change that choice before review. A category with no saved finding automatically has no submission and is skipped for that player.
+
 ## Stage 3: Review and vote
 
 The group reviews final submissions together, **one finding at a time**, grouped by category. Everyone's submission for the first category is shown before moving on to the next category.
@@ -49,19 +66,26 @@ Category 3: Player 1 → Player 2 → Player 3
 
 For each finding, players vote on whether the image matches the category. The vote determines whether that finding counts as an accepted match.
 
+All players see the **same server-controlled finding and framing**. Players cannot independently browse the other submissions during voting. Players vote on others' findings, not their own; accept votes must outnumber reject votes. Tied votes do not count as a match.
+
+Votes stay private until everyone is ready. The result is revealed, then everyone marks ready again to proceed to the next finding. After the final result, the group proceeds to the final scoreboard.
+
 ### Winning
 
 Once all findings have been reviewed, count each player's accepted matches across all categories. **The player with the most accepted matches wins.**
+
+The initial UI presents tied leaders as joint winners.
+
+## Peer-based progression
+
+There is no host controlling progression. Each player can set or unset their readiness for the current step. Once all active members are ready, the game advances and resets readiness. The exception is searching: its shared deadline ends the phase automatically, and readiness cannot shorten it.
+
+Changing the shared category list resets everyone's readiness. Changing a final selection or vote resets that player's readiness. Disconnected players retain their membership and readiness requirement; explicitly leaving removes that requirement.
 
 ## Rules still to decide
 
 The core game flow above is established. The following details remain open:
 
-- How categories are proposed, chosen, and finalized, including how many to use.
-- How the overall search time is chosen.
-- Whether the final-selection step has its own time limit and how players signal they are ready.
-- What happens when a player has no submission or has not selected a final candidate for a category.
-- Whether players can vote on their own findings.
-- How many votes are needed to accept a finding, and how tied votes are handled.
-- How a tie for the highest number of accepted matches is handled.
-- Whether a saved finding is a captured image or a reproducible Street View viewpoint, and which view details must be preserved.
+- Final limits and permissions for category collection. The prototype lets everyone add, edit, or remove categories before agreeing to the list.
+- Production session expiration and any recovery mechanism for players who never reconnect.
+- Whether joint winners should remain the final tie rule or be replaced by a tie-breaker.
