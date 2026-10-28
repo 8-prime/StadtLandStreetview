@@ -4,7 +4,7 @@ A browser-based multiplayer game in which players explore Google Street View to 
 
 ## Development
 
-The full-viewport desktop frontend is implemented in **Svelte 5 + TypeScript + Vite**, under [`frontend/`](frontend/). It uses a street-spotter party-game identity, generated SVG characters, and paginated content instead of scrolling. The backend is planned as a separate Rust/Axum application.
+The full-viewport desktop frontend is implemented in **Svelte 5 + TypeScript + Vite**, under [`frontend/`](frontend/). It uses a street-spotter party-game identity, generated SVG characters, and paginated content instead of scrolling. The Rust backend's session layer is implemented under [`backend/`](backend/); Axum transport wiring is still pending.
 
 ```sh
 pnpm --dir frontend install --frozen-lockfile
@@ -17,6 +17,7 @@ Open `http://localhost:5173` and choose **Try the solo demo** to walk through a 
 - [UI design preview — screenshots of every game phase](docs/ui-preview.md)
 - [Brand identity and no-scroll layout principles](docs/brand.md)
 - [Proposed Axum API contract](docs/api.md)
+- [Backend session methods and handler integration](backend/README.md)
 
 ## Game overview
 
