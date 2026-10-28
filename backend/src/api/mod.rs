@@ -17,7 +17,6 @@ use error::ApiError;
 mod auth;
 mod error;
 mod extract;
-mod frontend;
 mod handlers;
 mod websocket;
 
@@ -91,7 +90,7 @@ pub fn router(state: AppState) -> Router {
 
     Router::new()
         .nest("/api", api)
-        .fallback(frontend::serve)
+        .fallback(|| async { ApiError::new(StatusCode::NOT_FOUND, "Endpoint not found.") })
         .method_not_allowed_fallback(|| async {
             ApiError::new(
                 StatusCode::METHOD_NOT_ALLOWED,
@@ -107,10 +106,6 @@ pub fn router(state: AppState) -> Router {
 }
 
 async fn request_policy(State(state): State<AppState>, request: Request, next: Next) -> Response {
-    let path = request.uri().path();
-    if path != "/api" && !path.starts_with("/api/") {
-        return next.run(request).await;
-    }
     let mut response = if origin_allowed(request.headers(), &state.config) {
         next.run(request).await
     } else {
