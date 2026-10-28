@@ -1,9 +1,113 @@
-# Backend session layer
+# Rust / Axum backend
 
-The library exposes `backend::session::SessionManager`, implementing the game rules
-and personalized state from [`docs/api.md`](../docs/api.md). HTTP routes, credential
-cookies, and the WebSocket transport still need to be wired in Axum; `main.rs` is
-currently a placeholder.
+The binary serves the frontend and the HTTP and WebSocket endpoints in [`docs/api.md`](../docs/api.md).
+`backend::api::router` connects authenticated handlers to
+`backend::session::SessionManager`, which implements the game rules and personalized
+snapshots. The frontend's HTTP adapter works with these routes directly.
+
+## Run
+
+From the repository root:
+
+```sh
+pnpm --dir frontend install --frozen-lockfile
+cargo run --manifest-path backend/Cargo.toml
+```
+
+Open `http://127.0.0.1:3000`. Cargo's build script builds the frontend with Vite in
+HTTP mode and embeds its HTML, JavaScript, CSS, fonts, and images in the executable.
+It writes generated assets into Cargo's output directory, leaving `frontend/dist`
+available for independent frontend builds. Vite does not run as a server.
+
+Rust, Node.js 22.12+, and the installed frontend dependencies are required to build.
+The resulting executable needs no Node.js, checkout, or static-assets directory
+on the host. Build for deployment with:
+
+```sh
+cargo build --release --manifest-path backend/Cargo.toml
+```
+
+Deploy `backend/target/release/backend` (`backend.exe` on Windows) and point the
+reverse proxy's single upstream at this process, including WebSocket upgrades.
+`/` serves the UI, `/assets/*` serves the built assets, and `/api/*` serves the API.
+The application uses hash room URLs, so missing files/routes return 404 rather
+than the HTML shell. HTML and unhashed files revalidate; Vite assets have long-lived
+immutable caching. Static responses support ETags, conditional GET, and HEAD.
+
+Set `VITE_GOOGLE_MAPS_API_KEY` in the build environment or `frontend/.env.local`
+before building to enable real Street View. The key is embedded at build time;
+changing it requires rebuilding the executable. The embedded frontend always uses
+the HTTP API, even if a local Vite configuration selects mock mode.
+
+For optional hot reload during UI development, set `VITE_API_MODE=http` and
+`API_PROXY_TARGET=http://127.0.0.1:3000` in `frontend/.env.local`, then run
+`pnpm --dir frontend dev` alongside the backend. This is a development convenience;
+normal hosting only runs the Rust executable.
+
+The binary reads environment variables directly (it does not load `.env` files):
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SLS_BIND_ADDR` | `127.0.0.1:3000` | Listening address; use `0.0.0.0:3000` for LAN access |
+| `SLS_PUBLIC_ORIGIN` | Unset | Exact frontend origin, e.g. `https://game.example`, if a proxy rewrites Host |
+| `SLS_SECURE_COOKIES` | `false` | Set `true` when serving HTTPS, including behind a TLS proxy |
+
+Forward the entire site to this server in production. API requests with an Origin header
+must match `SLS_PUBLIC_ORIGIN`, or the request's Host if no public origin is set.
+Preserve Host when proxying, or configure the public origin. No cross-origin CORS
+access is enabled. Ctrl+C stops the HTTP server and closes registered sockets.
+
+## Docker
+
+Build from the repository root using the centralized `Dockerfile`:
+
+```sh
+docker build -t stadt-land-streetview .
+docker run --rm -p 3000:3000 stadt-land-streetview
+```
+
+Open `http://localhost:3000`. Docker installs the pinned pnpm version and frontend
+dependencies, then Cargo's build script builds the UI in HTTP mode and embeds it
+in a release executable. Dependency and Cargo caches speed up later builds. The
+final Debian image runs as an unprivileged user and contains only the executable
+and runtime libraries. It listens on `0.0.0.0:3000` inside the container and uses
+SIGINT for the existing graceful shutdown handler.
+
+Supply the Google Maps browser key at build time:
+
+```sh
+docker build --build-arg VITE_GOOGLE_MAPS_API_KEY=your-browser-key -t stadt-land-streetview .
+```
+
+Local `.env` files, `node_modules`, build outputs, and Git metadata are excluded
+from the build context. The browser key is part of the public JavaScript bundle;
+configure its website/API restrictions in Google Cloud. Changing it requires
+rebuilding the image.
+
+Forward the entire host, including WebSocket upgrades, to this one container. For
+a TLS reverse proxy, pass `-e SLS_SECURE_COOKIES=true` to `docker run`. If the proxy
+rewrites Host, also pass `-e SLS_PUBLIC_ORIGIN=https://game.example`. Session state
+and credentials remain in memory and reset when the container restarts.
+
+## Identity
+
+Create/join issue an opaque `sls_identity` session cookie with `HttpOnly`,
+`SameSite=Strict`, and `Path=/api` (plus `Secure` when configured). The server stores
+the credential's room-to-player mappings; public player IDs cannot authenticate
+requests. One browser credential can belong to multiple rooms, and all its tabs
+share the same player within a room. Use separate browser profiles/private sessions
+to test different players. Joining again with the cookie resumes membership.
+
+Explicit leave revokes that room membership, closes its sockets, and keeps other
+room memberships intact. Joining after leave creates a new membership during
+setup. Both credentials and game state are in memory and reset on restart.
+
+API responses use `Cache-Control: no-store`. Game and extraction errors use the same
+JSON `{ "message": ... }` envelope; invalid/missing credentials return 401 and
+attempts to access another room without membership return 403. JSON bodies and
+incoming WebSocket frames/messages are limited to 16 KiB.
+
+## Session architecture
 
 Create one manager and clone it into application state. Its global `RwLock` only
 protects room lookup/creation; each room has its own asynchronous `RwLock` and
@@ -50,7 +154,7 @@ explicit leave removes readiness/voting requirements but retains submissions.
 which handlers can map to 400, 403, 404, and 409 respectively. Use its `Display`
 message in the contract's `{ "message": ... }` error response.
 
-## WebSocket integration
+## WebSocket transport
 
 Call `connect` after authenticating and accepting the socket. Each socket receives
 a unique connection ID, so closing an older connection or a second tab cannot
@@ -68,6 +172,13 @@ either socket direction fails, a close arrives, or the heartbeat expires, stop
 the connection's tasks and call `disconnect` with its connection ID. Dropping the
 receiver alone does not unregister the connection. The initial snapshot is fetched
 with `get_session`, as the frontend already does after connecting.
+
+The Axum transport implements this in `src/api/websocket.rs`. It pings every
+15 seconds, expires a socket after 45 seconds without a pong, and bounds each
+outgoing write to 10 seconds. Receive, send, heartbeat, and shutdown futures run
+concurrently; ending one cancels the others before unregistering that connection.
+Registration happens after a successful upgrade, so failed upgrades do not leave
+phantom presence. Explicit leave closes all of that player's sockets.
 
 ## Rules and limits
 
@@ -97,3 +208,9 @@ cargo test --offline
 cargo fmt --check
 cargo clippy --offline --all-targets -- -D warnings
 ```
+
+The suite includes embedded frontend assets, caching, HEAD/conditional requests,
+API/static routing, HTTP routes for a full round, and real loopback WebSocket tests
+for authentication, notifications, multiple tabs, close cleanup, heartbeat expiry,
+explicit leave, and shutdown. The WebSocket tests need permission to connect to
+localhost sockets. Dependencies must already be cached when using `--offline`.

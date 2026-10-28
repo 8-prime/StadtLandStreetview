@@ -1,13 +1,15 @@
-# Frontend API contract (proposed)
+# HTTP and WebSocket API contract
 
-This is the contract implemented by `frontend/src/lib/api/http.ts`. Adapt that module when the Axum API is finalized. The frontend does not require Rust implementation details to match the local mock.
+This contract is implemented by the Axum backend in `backend/src/api/` and the frontend adapter in `frontend/src/lib/api/http.ts`. See `backend/README.md` for startup and configuration. The local mock uses the same frontend types and game progression rules.
 
 ## Transport and identity
 
-- Base path: `/api` on the frontend origin. Vite proxies this path to Axum during development, including WebSocket upgrades.
+- Base path: `/api` on the frontend origin. The Rust executable embeds and serves the frontend at `/`, with API and WebSocket routes on the same listener. Vite can optionally proxy `/api` to Axum during UI development, including WebSocket upgrades.
 - Create and join establish an opaque player credential in an HttpOnly cookie. The server derives the acting player from this credential. A room code is not a player credential.
+- The cookie is shared across browser tabs and maps to separate memberships per room. Explicit leave revokes only that room's membership; disconnecting preserves it. Use separate browser profiles to test different players in the same room.
 - JSON request/response bodies use camelCase. Timestamps are Unix **milliseconds**.
 - Actions return `204 No Content` (or a JSON body with a successful response). Errors use a non-2xx status and `{ "message": "Human-readable explanation" }`.
+- Creation returns `201` with `{ id }`; adding a category or finding returns `201` with its `{ id }`. Missing/invalid credentials return `401`, forbidden actions `403`, missing resources `404`, and phase/stale-step conflicts `409`. Malformed requests and extraction failures also use the JSON error envelope.
 - Session IDs are URL-safe, case-insensitive room codes. The join form normalizes typed codes to uppercase. Returned IDs should use a canonical uppercase form.
 - Enforce permissions, current step, ownership, deadlines, and input validation on the server. The browser's disabled controls are only presentation.
 

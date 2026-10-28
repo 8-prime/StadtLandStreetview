@@ -1,6 +1,6 @@
 # Frontend
 
-Viewport-contained Svelte 5 + TypeScript party game, built with Vite and pnpm. The Rust backend can live independently in `../backend/`.
+Viewport-contained Svelte 5 + TypeScript party game, built with Vite and pnpm. The Rust application in `../backend/` builds and embeds the frontend for hosting from one executable.
 
 ## Game canvas and identity
 
@@ -54,12 +54,34 @@ Saved viewpoints preserve panorama ID, position, heading, pitch, and zoom. Searc
 
 ### Axum mode
 
-```dotenv
-VITE_API_MODE=http
-API_PROXY_TARGET=http://localhost:3000
+The normal hosted application needs only the Rust server. From the repository root:
+
+```sh
+pnpm --dir frontend install --frozen-lockfile
+cargo run --manifest-path backend/Cargo.toml
 ```
 
-Restart Vite. HTTP actions use `/api` and the frontend subscribes to `/api/sessions/{id}/ws`. Production should route those paths to Axum on the frontend origin. No API hostname is hardcoded in the client.
+Open `http://127.0.0.1:3000`. Cargo builds the production UI in HTTP mode and embeds
+the assets, including fonts, in the executable. No Vite server or separate static
+directory is required at runtime. Build a deployable binary with
+`cargo build --release --manifest-path backend/Cargo.toml`. Set the Google Maps key
+before building; the embedded frontend always uses HTTP mode.
+
+For optional UI hot reload through Vite, configure:
+
+```dotenv
+VITE_API_MODE=http
+API_PROXY_TARGET=http://127.0.0.1:3000
+```
+
+Start the backend from the repository root with `cargo run --manifest-path backend/Cargo.toml`.
+Restart Vite. HTTP actions use `/api` and the frontend subscribes to `/api/sessions/{id}/ws`. The hosted Rust app serves both paths and all frontend files on the same origin. No API hostname is hardcoded in the client.
+
+HTTP mode uses an HttpOnly browser cookie: tabs in the same browser profile share
+the same player within a room. Test different players using separate browser
+profiles or private sessions. Refreshing/reconnecting resumes membership;
+explicit leave revokes it for that room. See the [backend setup](../backend/README.md)
+for listening-address, public-origin, and HTTPS cookie settings.
 
 See [`../docs/api.md`](../docs/api.md) for endpoint payloads, cookie identity, snapshot types, WebSocket notifications, readiness transitions, and visibility rules. The HTTP adapter is intentionally isolated so it can evolve with the Rust server.
 
@@ -96,6 +118,9 @@ On systems with an existing Chromium, run `CHROMIUM_PATH=/path/to/chromium pnpm 
 
 State-machine tests cover readiness, stale steps, deadlines, private snapshots, selections, review ordering, scoring, departures, and empty rounds. Browser tests exercise the solo game, cross-tab agreement, stable portraits, refresh recovery, and keyboard interaction. Viewport checks run at **1280 × 720, 1440 × 900, and 1920 × 1080**, including maximum-length categories, twelve peers, twelve candidates, paginated scoreboards, and dialogs. They check for offscreen/clipped controls, document or nested scrolling, and incorrect camera aspect ratios. Actual Google Maps requests need a configured key and a manual integration check.
 
-Production assets are emitted to `dist/`, suitable for Axum static-file serving or a static host. Bricolage Grotesque and Nunito Sans fonts are bundled locally through Fontsource; the UI does not request Google Fonts.
+Standalone `pnpm build` emits assets to `dist/`. Cargo builds its own HTTP-mode bundle
+inside its output directory and embeds it in the Rust executable; deploying that
+executable does not require `dist/`. Bricolage Grotesque and Nunito Sans fonts are
+bundled locally through Fontsource; the UI does not request Google Fonts.
 
 The pnpm Rollup override pins a retrievable release because the registry advertised a newer tarball that returned 404 during setup. The lockfile pins the complete dependency graph.

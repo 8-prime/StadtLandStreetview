@@ -4,20 +4,32 @@ A browser-based multiplayer game in which players explore Google Street View to 
 
 ## Development
 
-The full-viewport desktop frontend is implemented in **Svelte 5 + TypeScript + Vite**, under [`frontend/`](frontend/). It uses a street-spotter party-game identity, generated SVG characters, and paginated content instead of scrolling. The Rust backend's session layer is implemented under [`backend/`](backend/); Axum transport wiring is still pending.
+The full-viewport desktop frontend is implemented in **Svelte 5 + TypeScript + Vite**, under [`frontend/`](frontend/). It uses a street-spotter party-game identity, generated SVG characters, and paginated content instead of scrolling. The Rust/Axum application under [`backend/`](backend/) embeds the built frontend and serves the entire site, game API, and WebSocket notifications from one process.
 
 ```sh
 pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend dev
+cargo run --manifest-path backend/Cargo.toml
 ```
 
-Open `http://localhost:5173` and choose **Try the solo demo** to walk through a game without a backend or Google Maps key. Ordinary local rooms can be joined from separate tabs in the same browser. Live Street View requires a restricted Maps JavaScript API browser key in `frontend/.env.local`.
+Open `http://127.0.0.1:3000`. Cargo builds and embeds the frontend in HTTP mode. A release build produces a single executable to deploy behind one reverse-proxy upstream; no separate static-file server is needed. Live Street View requires a restricted Maps JavaScript API browser key in `frontend/.env.local` before building.
+
+For frontend hot reload or the local solo demo, run `pnpm --dir frontend dev` and open `http://localhost:5173`. The default Vite mode uses browser-local rooms and offers **Try the solo demo** without a backend or Google Maps key.
+
+The root `Dockerfile` builds both parts and packages the combined executable:
+
+```sh
+docker build -t stadt-land-streetview .
+docker run --rm -p 3000:3000 stadt-land-streetview
+```
+
+See [Docker configuration](backend/README.md#docker) for the Maps build argument
+and reverse-proxy settings.
 
 - [Frontend setup, Maps configuration, and checks](frontend/README.md)
 - [UI design preview — screenshots of every game phase](docs/ui-preview.md)
 - [Brand identity and no-scroll layout principles](docs/brand.md)
-- [Proposed Axum API contract](docs/api.md)
-- [Backend session methods and handler integration](backend/README.md)
+- [HTTP and WebSocket API contract](docs/api.md)
+- [Backend setup, session methods, and configuration](backend/README.md)
 
 ## Game overview
 

@@ -1,0 +1,19 @@
+# Send only application build inputs to Docker.
+**
+!Dockerfile
+!backend/
+!backend/**
+!frontend/
+!frontend/**
+
+# Dependencies and build products are created inside the Linux build stages.
+**/node_modules
+**/target
+**/dist
+**/test-results
+**/playwright-report
+
+# Supply the public Maps browser key with --build-arg, rather than local env files.
+**/.env
+**/.env.*
+**/.DS_Store

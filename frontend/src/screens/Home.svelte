@@ -2,6 +2,7 @@
   import Icon from '../lib/components/Icon.svelte';
   import GameLogo from '../lib/components/GameLogo.svelte';
   import Spotter from '../lib/components/Spotter.svelte';
+  import HomeBackdrop from '../lib/components/HomeBackdrop.svelte';
   import { mockMode } from '../lib/api';
   export let busy = false;
   export let roomCode = '';
@@ -14,6 +15,8 @@
   $: if (roomCode) { code = roomCode; tab = 'join'; }
 </script>
 
+<div class="home-scene">
+<HomeBackdrop/>
 <main class="home">
   <section class="home-world" aria-label="Stadt Land Streetview">
     <span class="club-label"><Icon name="eye" size={18}/> THE NOT-SO-SECRET SPOTTERS CLUB</span>
@@ -53,3 +56,9 @@
   </section>
   <footer class="home-footer"><span><Icon name="map" size={16}/> A STREET VIEW SCAVENGER PARTY</span><span>NO SEARCH BAR. JUST SUSPICIOUSLY GOOD OBSERVATION.</span></footer>
 </main>
+</div>
+
+<style>
+  .home-scene { position: relative; height: 100%; isolation: isolate; }
+  .home { position: relative; z-index: 1; }
+</style>
