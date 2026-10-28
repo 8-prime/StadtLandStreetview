@@ -1,6 +1,16 @@
 # Frontend
 
-Desktop-first Svelte 5 + TypeScript application, built with Vite and pnpm. The Rust backend can live independently in `../backend/`.
+Viewport-contained Svelte 5 + TypeScript party game, built with Vite and pnpm. The Rust backend can live independently in `../backend/`.
+
+## Game canvas and identity
+
+The entire application fits the browser viewport, with **no page or nested panel scrolling**. The initial desktop target is **1280 × 720** and larger. Header, phase content, and footer occupy reserved grid rows; the readiness controls never overlap the game board. Category lists, candidate collections, and larger scoreboards have explicit page controls. Twelve-player lobbies fit in a bounded grid.
+
+Street View exploration, final selection, and synchronized review all fit the same **16:10 camera aperture** into the available width and height. Intentional letterboxing preserves framing instead of cropping it to fit a panel.
+
+The street-spotter identity uses original sign lettering, electric blue, traffic yellow, asphalt outlines, and flat SVG characters. `Spotter.svelte` draws compatible character parts chosen deterministically by `makeSpotter(player.id)`: the same identity looks the same across clients and refreshes, without a new API field or image service. Readiness, disconnection, searching, and winning affect the pose/expression. There is no character reroll.
+
+See the [brand notes](../docs/brand.md) and [screenshot preview](../docs/ui-preview.md).
 
 ## Run locally
 
@@ -65,8 +75,8 @@ src/
     api/mock.ts       Browser-local prototype transport
     api/engine.ts     Local prototype state machine (not server logic)
     maps/             Lazy Google Maps loader and Street View component
-    components/       Icons, avatars, illustrated scene, readiness footer
-  style.css           Desktop layout, theme, focus and reduced-motion styles
+    components/       Generated SVG spotters, sign logo, pagination, category rail
+  style.css           Fixed-viewport layouts, brand, focus and reduced-motion styles
 ```
 
 The application uses hash room URLs, so static hosting does not require route fallback configuration. The current phase and review item come from the session snapshot, never a player-controlled route.
@@ -84,8 +94,8 @@ pnpm preview
 
 On systems with an existing Chromium, run `CHROMIUM_PATH=/path/to/chromium pnpm test:e2e` instead of downloading a browser. Browser tests use mock mode with no Maps key. Run them without a live-Maps `.env.local` configuration.
 
-State-machine tests cover readiness, stale steps, deadlines, private snapshots, selections, review ordering, scoring, departures, and empty rounds. Browser tests exercise the solo game, cross-tab agreement, refresh recovery, and basic keyboard interaction. Actual Google Maps requests need a configured key and a manual integration check.
+State-machine tests cover readiness, stale steps, deadlines, private snapshots, selections, review ordering, scoring, departures, and empty rounds. Browser tests exercise the solo game, cross-tab agreement, stable portraits, refresh recovery, and keyboard interaction. Viewport checks run at **1280 × 720, 1440 × 900, and 1920 × 1080**, including maximum-length categories, twelve peers, twelve candidates, paginated scoreboards, and dialogs. They check for offscreen/clipped controls, document or nested scrolling, and incorrect camera aspect ratios. Actual Google Maps requests need a configured key and a manual integration check.
 
-Production assets are emitted to `dist/`, suitable for Axum static-file serving or a static host. Google Fonts supplies the typography with local system-font fallbacks.
+Production assets are emitted to `dist/`, suitable for Axum static-file serving or a static host. Bricolage Grotesque and Nunito Sans fonts are bundled locally through Fontsource; the UI does not request Google Fonts.
 
 The pnpm Rollup override pins a retrievable release because the registry advertised a newer tarball that returned 404 during setup. The lockfile pins the complete dependency graph.

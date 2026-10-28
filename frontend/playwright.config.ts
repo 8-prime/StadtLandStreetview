@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 90000,
   use: {
     baseURL: 'http://127.0.0.1:5173',
-    viewport: { width: 1440, height: 1000 },
+    viewport: { width: 1440, height: 900 },
     launchOptions: process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH, args: ['--no-sandbox'] } : {},
     trace: 'retain-on-failure',
   },

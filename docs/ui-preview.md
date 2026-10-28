@@ -1,53 +1,69 @@
-# UI design preview
+# UI design preview — the street spotters club
 
-The desktop frontend uses a warm, illustrated travel-journal style: cream backgrounds, forest-green actions, sage accents, and a little terracotta. Manrope and DM Sans provide the main typography, with italic serif accents for the headings.
+**Find the weird. Bring your friends.**
 
-These are actual screenshots of the running Svelte application at a 1440-pixel desktop width. The street scenes are **illustrated demo content**, not Google Street View imagery. Configured live rooms replace those scenes with the interactive Google map and saved Street View viewpoints.
+The identity is now a full-screen party game: misaligned street-sign lettering, electric-blue boards, traffic-yellow actions, asphalt outlines, and original generated SVG spotters. See the [brand notes](brand.md) for the visual system and character generation.
 
-Click any screenshot to open it at full size. You do not need to run the app or forward a container port to view this page on GitHub.
+These are **actual viewport screenshots**, not long-page captures. The main images are 1440 × 900; the twelve-player example is 1280 × 720. Every phase fits the browser window without page or nested scrolling. Longer lists use explicit page controls.
 
-## Home — a meeting point for curious people
+The street scenes are **illustrated demo content**, not Google Street View imagery. Configured live rooms replace them with the interactive Google map and saved viewpoints. The same 16:10 frame is fitted to each workspace using deliberate letterboxing.
 
-An illustrated introduction, a short explanation of the three stages, create/join controls, and a solo-demo entry point.
+Click any screenshot to open it at full size.
 
-![Home screen with illustrated street scene and create/join form](images/home.png)
+## Check in
 
-## Lobby — the curious crew
+A bold game logo, a cast of suspiciously observant characters, and immediate create/join controls. The optional solo demo is available without a backend or Maps key.
 
-Player presence, room sharing, search duration, and a persistent group-readiness footer. There are no host progression controls.
+![Opening game screen with street-sign logo, original SVG spotters, and play controls](images/home.png)
 
-![Lobby showing players, readiness, and game instructions](images/lobby.png)
+## The usual suspects
 
-## Categories — dream it up
+Players get stable generated characters automatically. The crew switches to ready poses when they give the nod. Progression is peer-based, with no host controls or character reroll.
 
-A shared editable category list with optional suggestions. Edits invalidate the group's previous readiness.
+![Lobby with generated spotter characters and the group-readiness footer](images/lobby.png)
 
-![Category collection screen with an editable list and inspiration suggestions](images/categories.png)
+### Twelve spotters at 1280 × 720
 
-## Search — go get lost
+The full crew fits in a bounded grid. This layout-test fixture also uses maximum-length player names.
 
-A category checklist, prominent shared timer, a large exploration viewport, and an action to save the current framing. Multiple views can be saved for each category.
+![Twelve-player lobby contained in a 1280 by 720 browser viewport](images/full-crew-720.png)
 
-![Search workspace with category sidebar, timer, illustrated demo scene, and save controls](images/search.png)
+## Make the list
 
-## Final selection — your best shot
+Four assignments per page, shared editing, and suggestions from the field. Readiness resets when the list changes.
 
-Choose among saved candidates after searching ends. One is selected automatically; categories without a finding need no extra action.
+![Category board with numbered assignments and explicit pagination](images/categories.png)
 
-![Final selection screen with the selected viewpoint and candidate choices](images/selection.png)
+## Hit the streets
 
-## Voting — make the call
+The timer, category rail, fixed-aspect map aperture, save action, and paginated private evidence strip are visible together.
 
-The group sees one locked viewpoint at a time. Voting buttons and participation counts sit alongside the finding; the footer shows readiness. Results are revealed before everyone proceeds to the next finding.
+![Search workspace with the timer and save controls inside the viewport](images/search.png)
 
-![Voting screen with the shared finding, match/reject buttons, and readiness footer](images/review.png)
+## Pick your evidence
 
-## Results — the final tally
+The camera preview keeps its framing. Candidates have explicit page controls; the first saved view is selected automatically and missing findings are skipped.
 
-A simple leaderboard of accepted matches, including shared winners when scores tie.
+![Final candidate selection with fixed camera framing and candidate-page controls](images/selection.png)
 
-![Final scoreboard with player rankings and accepted-match totals](images/results.png)
+## Judge the finds
+
+One server-controlled finding for everyone. The evidence stays locked while the crew votes. The readiness footer occupies its own space and never covers the view.
+
+![Synchronized voting screen with match and reject controls](images/review.png)
+
+### The verdict
+
+Results are revealed before everyone marks ready for the next finding.
+
+![Revealed voting result with the group vote tally](images/result-reveal.png)
+
+## Case closed
+
+Spotter honors, a paginated scoreboard, and a way back to the meeting point. Tied leaders share the win.
+
+![Final scoreboard and crowned spotter portrait](images/results.png)
 
 ---
 
-The screenshots are captured by the browser tests in `frontend/tests/game.spec.ts`. See the [frontend setup guide](../frontend/README.md) to run the interactive demo, or the [API contract](api.md) for the Axum integration.
+Screenshots are captured by `frontend/tests/game.spec.ts`. The tests check viewport containment at 1280 × 720, 1440 × 900, and 1920 × 1080, including maximum-content fixtures and instruction dialogs. See the [setup guide](../frontend/README.md) to run the interactive demo, or the [API contract](api.md) for the Axum integration.

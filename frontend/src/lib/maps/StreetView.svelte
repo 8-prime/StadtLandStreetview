@@ -126,9 +126,9 @@
     <span class="map-label"><Icon name="spark" size={15}/> Illustrated demo · not Google Street View</span>
     {#if explore}
       <div class="demo-scenes" aria-label="Demo street scenes">
-        <button class="map-button" onclick={() => demoChange(scene - 1)} aria-label="Previous demo scene">←</button>
+        <button class="map-button" onclick={() => demoChange(scene - 1)} aria-label="Previous demo scene"><span class="rotate-arrow"><Icon name="arrow" size={17}/></span></button>
         <span>Sample street {scene + 1} / 3</span>
-        <button class="map-button" onclick={() => demoChange(scene + 1)} aria-label="Next demo scene">→</button>
+        <button class="map-button" onclick={() => demoChange(scene + 1)} aria-label="Next demo scene"><Icon name="arrow" size={17}/></button>
       </div>
     {/if}
   {:else}
