@@ -84,10 +84,12 @@ pub struct ReviewItem {
     pub finding: Finding,
     pub index: usize,
     pub total: usize,
+    /// Always false; retained for wire compatibility without a reveal step.
     pub revealed: bool,
     pub own_vote: Option<Vote>,
     pub votes_cast: usize,
     pub eligible_voters: usize,
+    /// Always None; completed results live in SessionState.results.
     pub result: Option<ReviewResult>,
 }
 

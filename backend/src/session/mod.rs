@@ -47,7 +47,6 @@ struct Session {
     inactive_since: Option<DateTime<Utc>>,
     review_queue: Vec<Finding>,
     review_index: usize,
-    revealed: bool,
     votes: HashMap<Uuid, Vote>,
     results: Vec<ReviewResult>,
 }
@@ -73,7 +72,6 @@ impl Session {
             inactive_since: Some(now),
             review_queue: Vec::new(),
             review_index: 0,
-            revealed: false,
             votes: HashMap::new(),
             results: Vec::new(),
         })
@@ -227,19 +225,15 @@ impl Session {
             Phase::Selection,
             Phase::Review,
         ])?;
-        if is_ready {
-            if self.phase == Phase::Categories && self.categories.is_empty() {
-                return Err(SessionError::Conflict("Add at least one category first."));
-            }
-            if self.phase == Phase::Review
-                && !self.revealed
-                && self.review_queue[self.review_index].player_id != player_id
-                && !self.votes.contains_key(&player_id)
-            {
-                return Err(SessionError::Conflict(
-                    "Cast your vote before marking yourself ready.",
-                ));
-            }
+        if is_ready && self.phase == Phase::Categories && self.categories.is_empty() {
+            return Err(SessionError::Conflict("Add at least one category first."));
+        }
+        if self.phase == Phase::Review
+            && self.review_queue[self.review_index].player_id != player_id
+        {
+            return Err(SessionError::Conflict(
+                "Cast your vote instead of marking yourself ready.",
+            ));
         }
         self.players.get_mut(&player_id).unwrap().is_ready = is_ready;
         self.advance(now);
@@ -374,11 +368,17 @@ impl Session {
         Ok(())
     }
 
-    fn vote(&mut self, player_id: Uuid, item_id: Uuid, vote: Vote) -> Result<()> {
+    fn vote(
+        &mut self,
+        player_id: Uuid,
+        item_id: Uuid,
+        vote: Vote,
+        now: DateTime<Utc>,
+    ) -> Result<()> {
         self.active_player(player_id)?;
         self.require_phase(&[Phase::Review])?;
         let finding = &self.review_queue[self.review_index];
-        if self.revealed || finding.id != item_id {
+        if finding.id != item_id {
             return Err(SessionError::Conflict(
                 "Voting has closed for that finding.",
             ));
@@ -388,9 +388,9 @@ impl Session {
                 "You cannot vote on your own finding.",
             ));
         }
-        if self.votes.insert(player_id, vote) != Some(vote) {
-            self.players.get_mut(&player_id).unwrap().is_ready = false;
-        }
+        self.votes.insert(player_id, vote);
+        self.players.get_mut(&player_id).unwrap().is_ready = true;
+        self.advance(now);
         Ok(())
     }
 
@@ -445,7 +445,7 @@ impl Session {
                     Phase::Review
                 });
             }
-            Phase::Review if !self.revealed => {
+            Phase::Review => {
                 let finding = &self.review_queue[self.review_index];
                 let accepts = self
                     .votes
@@ -469,12 +469,7 @@ impl Session {
                 if accepted {
                     self.players.get_mut(&finding.player_id).unwrap().score += 1;
                 }
-                self.revealed = true;
-                self.new_step(Phase::Review);
-            }
-            Phase::Review => {
                 self.review_index += 1;
-                self.revealed = false;
                 self.votes.clear();
                 self.new_step(if self.review_index < self.review_queue.len() {
                     Phase::Review
@@ -495,7 +490,7 @@ impl Session {
                 finding: finding.clone(),
                 index: self.review_index,
                 total: self.review_queue.len(),
-                revealed: self.revealed,
+                revealed: false,
                 own_vote: self.votes.get(&player_id).copied(),
                 votes_cast: self.votes.len(),
                 eligible_voters: self
@@ -503,11 +498,7 @@ impl Session {
                     .values()
                     .filter(|player| !player.left && player.id != finding.player_id)
                     .count(),
-                result: if self.revealed {
-                    self.results.last().cloned()
-                } else {
-                    None
-                },
+                result: None,
             })
         } else {
             None

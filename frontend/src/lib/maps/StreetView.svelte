@@ -65,7 +65,13 @@
         if (explore) {
           map = new google.maps.Map(element, {
             center: { lat: 52.52, lng: 13.405 }, zoom: 14,
-            mapTypeControl: false, fullscreenControl: false,
+            mapTypeControl: true,
+            mapTypeControlOptions: {
+              mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE],
+              style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
+              position: google.maps.ControlPosition.TOP_RIGHT,
+            },
+            fullscreenControl: false,
             streetViewControl: true, clickableIcons: false,
           });
           panorama = map.getStreetView();

@@ -361,10 +361,24 @@ async fn http_routes_play_a_complete_round_with_private_findings_and_scores() {
     let owner = snapshot(&app, &id, &alex).await;
     assert!(owner["review"]["ownVote"].is_null());
     assert!(owner["review"]["result"].is_null());
-    ready_all(&app, &id, &[&alex, &mika]).await;
-    let revealed = snapshot(&app, &id, &alex).await;
-    assert_eq!(revealed["review"]["result"]["accepted"], true);
-    assert_eq!(revealed["players"][0]["score"], 1);
+    assert_eq!(owner["players"][1]["ready"], true);
+    assert_eq!(
+        request(
+            &app,
+            Method::PUT,
+            &format!("{base}/ready"),
+            Some(&alex),
+            Some(json!({ "stepId": owner["stepId"], "ready": true }))
+        )
+        .await
+        .status,
+        StatusCode::NO_CONTENT
+    );
+    let next = snapshot(&app, &id, &alex).await;
+    assert_eq!(next["results"][0]["accepted"], true);
+    assert_eq!(next["players"][0]["score"], 1);
+    assert_eq!(next["review"]["id"], mikas);
+    assert_eq!(next["review"]["votesCast"], 0);
     assert_eq!(
         request(
             &app,
@@ -389,8 +403,19 @@ async fn http_routes_play_a_complete_round_with_private_findings_and_scores() {
         .status,
         StatusCode::CONFLICT
     );
-    ready_all(&app, &id, &[&alex, &mika]).await;
-    assert_eq!(snapshot(&app, &id, &alex).await["review"]["id"], mikas);
+    // Ready the owner first so the last vote itself triggers the final transition.
+    assert_eq!(
+        request(
+            &app,
+            Method::PUT,
+            &format!("{base}/ready"),
+            Some(&mika),
+            Some(json!({ "stepId": next["stepId"], "ready": true }))
+        )
+        .await
+        .status,
+        StatusCode::NO_CONTENT
+    );
     assert_eq!(
         request(
             &app,
@@ -403,8 +428,6 @@ async fn http_routes_play_a_complete_round_with_private_findings_and_scores() {
         .status,
         StatusCode::NO_CONTENT
     );
-    ready_all(&app, &id, &[&alex, &mika]).await;
-    ready_all(&app, &id, &[&alex, &mika]).await;
     let finished = snapshot(&app, &id, &alex).await;
     assert_eq!(finished["phase"], "finished");
     assert_eq!(finished["results"].as_array().unwrap().len(), 2);

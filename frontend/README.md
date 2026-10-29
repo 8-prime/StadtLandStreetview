@@ -38,7 +38,7 @@ Restart Vite after changing environment variables. Production values are supplie
 
 Enable the Maps JavaScript API and billing in your Google Cloud project. Restrict the browser key to the development/production websites and permitted APIs. The key is intentionally public in the browser; `.env.local` is gitignored to keep environment-specific configuration out of source control. Axum does not need this browser key.
 
-Ordinary rooms load Google Maps directly. Drag Pegman onto a covered street, frame the scene, choose a category, and save. Without a key, the live map shows configuration instructions and saving is disabled. A map-loading or authentication failure is shown in the map panel.
+Ordinary rooms load Google Maps directly. Use the **Map / Satellite** control to switch the overhead map between roads and satellite imagery. Drag Pegman onto a covered street, frame the scene, choose a category, and save. Without a key, the live map shows configuration instructions and saving is disabled. A map-loading or authentication failure is shown in the map panel.
 
 Saved viewpoints preserve panorama ID, position, heading, pitch, and zoom. Search, selection, and review use a 16:10 viewport. Selection/review views are locked to the saved framing. Panorama availability can change; unavailable views show an explanatory message.
 

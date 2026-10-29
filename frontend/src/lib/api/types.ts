@@ -43,11 +43,11 @@ export interface ReviewItem {
   finding: Finding;
   index: number;
   total: number;
-  revealed: boolean;
+  revealed: boolean; // Always false; retained for wire compatibility.
   ownVote: Vote | null;
   votesCast: number;
   eligibleVoters: number;
-  result: ReviewResult | null;
+  result: ReviewResult | null; // Always null; completed results live in SessionState.results.
 }
 
 export interface SessionState {

@@ -216,8 +216,8 @@ impl SessionManager {
         item_id: Uuid,
         vote: Vote,
     ) -> Result<()> {
-        self.update(session_id, |session, _| {
-            session.vote(player_id, item_id, vote)
+        self.update(session_id, |session, now| {
+            session.vote(player_id, item_id, vote, now)
         })
         .await
     }

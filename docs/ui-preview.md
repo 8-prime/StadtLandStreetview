@@ -48,15 +48,11 @@ The camera preview keeps its framing. Candidates have explicit page controls; th
 
 ## Judge the finds
 
-One server-controlled finding for everyone. The evidence stays locked while the crew votes. The readiness footer occupies its own space and never covers the view.
+One server-controlled finding for everyone. The evidence stays locked while the crew votes. A vote automatically counts as ready; only the finding's owner has a ready button. The footer occupies its own space and never covers the view. The screenshot below predates this simplified voting flow.
 
 ![Synchronized voting screen with match and reject controls](images/review.png)
 
-### The verdict
-
-Results are revealed before everyone marks ready for the next finding.
-
-![Revealed voting result with the group vote tally](images/result-reveal.png)
+Once everyone responds, the finding is scored and the next vote opens immediately. There is no separate verdict screen or second readiness step.
 
 ## Case closed
 

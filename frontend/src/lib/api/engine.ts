@@ -14,7 +14,6 @@ export interface Room {
   selections: Record<string, Record<string, string>>;
   queue: string[];
   reviewIndex: number;
-  revealed: boolean;
   votes: Record<string, Vote>;
   results: ReviewResult[];
 }
@@ -27,7 +26,7 @@ export function createRoom(id: string, name: string, playerId: string, durationS
   return {
     id, revision: 0, stepId: uid(), phase: 'lobby', demo, durationSeconds,
     searchEndsAt: null, categories: [], findings: [], selections: {}, queue: [],
-    reviewIndex: 0, revealed: false, votes: {}, results: [],
+    reviewIndex: 0, votes: {}, results: [],
     players: names.map((n, i) => ({ id: i === 0 ? playerId : uid(), name: n, ready: false, connected: true, color: i, score: 0, left: false, bot: i > 0, lastSeen: Date.now() })),
   };
 }
@@ -84,25 +83,18 @@ function advance(room: Room, now: number) {
       return id ? [id] : [];
     }));
     room.reviewIndex = 0;
-    room.revealed = false;
     room.votes = {};
     newStep(room, room.queue.length ? 'review' : 'finished');
   } else if (room.phase === 'review') {
-    if (!room.revealed) {
-      const finding = currentFinding(room)!;
-      const accepts = Object.values(room.votes).filter(v => v === 'accept').length;
-      const rejects = Object.values(room.votes).filter(v => v === 'reject').length;
-      const accepted = accepts > rejects;
-      room.results.push({ itemId: finding.id, playerId: finding.playerId, categoryId: finding.categoryId, accepted, accepts, rejects });
-      if (accepted) room.players.find(p => p.id === finding.playerId)!.score++;
-      room.revealed = true;
-      newStep(room, 'review');
-    } else {
-      room.reviewIndex++;
-      room.revealed = false;
-      room.votes = {};
-      newStep(room, room.reviewIndex < room.queue.length ? 'review' : 'finished');
-    }
+    const finding = currentFinding(room)!;
+    const accepts = Object.values(room.votes).filter(v => v === 'accept').length;
+    const rejects = Object.values(room.votes).filter(v => v === 'reject').length;
+    const accepted = accepts > rejects;
+    room.results.push({ itemId: finding.id, playerId: finding.playerId, categoryId: finding.categoryId, accepted, accepts, rejects });
+    if (accepted) room.players.find(p => p.id === finding.playerId)!.score++;
+    room.reviewIndex++;
+    room.votes = {};
+    newStep(room, room.reviewIndex < room.queue.length ? 'review' : 'finished');
   }
 }
 
@@ -115,7 +107,7 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
     if (room.phase === 'searching' || room.phase === 'finished') throw new Error('Readiness is not used in this phase.');
     if (action.ready && room.phase === 'categories' && !room.categories.length) throw new Error('Add at least one category first.');
     const finding = currentFinding(room);
-    if (action.ready && room.phase === 'review' && !room.revealed && finding?.playerId !== playerId && !room.votes[playerId]) throw new Error('Cast your vote before marking yourself ready.');
+    if (room.phase === 'review' && finding?.playerId !== playerId) throw new Error('Cast your vote instead of marking yourself ready.');
     player.ready = action.ready;
   } else if (action.type === 'add-category' || action.type === 'edit-category' || action.type === 'delete-category') {
     if (room.phase !== 'categories') throw new Error('Categories are locked for this round.');
@@ -152,10 +144,10 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
     player.ready = false;
   } else if (action.type === 'vote') {
     const finding = currentFinding(room);
-    if (room.phase !== 'review' || room.revealed || finding?.id !== action.itemId) throw new Error('Voting has closed for that finding.');
+    if (room.phase !== 'review' || finding?.id !== action.itemId) throw new Error('Voting has closed for that finding.');
     if (finding.playerId === playerId) throw new Error('You cannot vote on your own finding.');
     room.votes[playerId] = action.vote;
-    player.ready = false;
+    player.ready = true;
   } else if (action.type === 'demo-end-search') {
     if (!room.demo || room.phase !== 'searching') throw new Error('This shortcut is only available in the solo demo.');
     room.searchEndsAt = now;
@@ -170,7 +162,7 @@ export function simulatePeers(room: Room, now = Date.now()): boolean {
   if (!bots.length || (room.phase === 'categories' && !room.categories.length)) return false;
   for (const bot of bots) {
     const finding = currentFinding(room);
-    if (room.phase === 'review' && !room.revealed && finding && finding.playerId !== bot.id) {
+    if (room.phase === 'review' && finding && finding.playerId !== bot.id) {
       room.votes[bot.id] = (room.reviewIndex + bot.color) % 4 === 0 ? 'reject' : 'accept';
     }
     bot.ready = true;
@@ -189,9 +181,9 @@ export function snapshot(room: Room, meId: string): SessionState {
     ownFindings: room.findings.filter(f => f.playerId === meId), selections: room.selections[meId] ?? {},
     review: room.phase === 'review' && finding ? {
       id: finding.id, finding, index: room.reviewIndex, total: room.queue.length,
-      revealed: room.revealed, ownVote: room.votes[meId] ?? null,
+      revealed: false, ownVote: room.votes[meId] ?? null,
       votesCast: Object.keys(room.votes).length, eligibleVoters: room.players.filter(p => p.id !== finding.playerId && !p.left).length,
-      result: room.revealed ? room.results.find(r => r.itemId === finding.id) ?? null : null,
+      result: null,
     } : null,
     results: room.results,
   });

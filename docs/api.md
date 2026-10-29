@@ -66,7 +66,7 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 | `ownFindings` | Requesting player's candidates only |
 | `selections` | Requesting player's `{ [categoryId]: findingId }` mapping |
 | `review` | Current shared item, or `null` outside review |
-| `results` | Already revealed result records only |
+| `results` | Completed finding results only |
 
 `review` contains:
 
@@ -76,11 +76,11 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
   finding: Finding;            // Only the finding currently shown to everyone
   index: number;               // Zero-based index in the review queue
   total: number;
-  revealed: boolean;
+  revealed: boolean;           // Always false; retained for wire compatibility
   ownVote: 'accept' | 'reject' | null;
   votesCast: number;
   eligibleVoters: number;
-  result: ReviewResult | null; // Null until votes close
+  result: ReviewResult | null; // Always null; completed results are in SessionState.results
 }
 ```
 
@@ -100,8 +100,7 @@ The client reconnects with exponential backoff (up to 15 seconds) and resynchron
 2. All ready with at least one category → searching. Establish one server deadline.
 3. Deadline reached → final selection. Readiness does **not** shorten searching.
 4. All ready after selection → first review item, or finished if nobody submitted a finding.
-5. All ready on an open review item → calculate and reveal its result.
-6. All ready on a revealed result → next item, or finished after the last item.
+5. All eligible voters have voted and the finding's owner is ready (unless they left) → calculate the result, award any point, and immediately open the next item, or finish after the last item. There is no intermediate result-reveal step.
 
 Reset readiness and assign a new `stepId` at each transition. A category edit or membership change during setup also invalidates readiness and should issue a new `stepId`. Reject stale readiness requests; do not apply them to a newer step. Readiness requests set a value rather than toggling it, making retries idempotent.
 
@@ -110,8 +109,8 @@ Reset readiness and assign a new `stepId` at each transition. A category edit or
 - The first saved candidate is the default selection. Removing the selected candidate selects the next remaining one. Zero candidates implicitly means no submission.
 - Selecting or deleting a candidate during selection clears that player's readiness.
 - Lock final selections when review begins. Build the review queue category-first, then player-first; skip missing submissions.
-- Players cannot vote on their own findings. Other active players must vote before marking ready on an open review item. Owners can mark ready without voting.
-- Votes can change until closing; changing a vote clears that player's readiness.
+- Players cannot vote on their own findings. Casting a vote sets the voter's readiness automatically; only the owner uses the readiness endpoint during review. Reject readiness requests from other players, including attempts to unset readiness independently of a vote.
+- Votes can change until everyone has responded; changing a vote keeps the voter ready. Reject vote requests for a previous item after progression, and clear votes and readiness for the new item.
 - Accept if accept votes outnumber reject votes. Ties and zero votes fail. Award one point per accepted finding, once.
 - Final scores count accepted matches. The UI presents tied leaders as joint winners.
 - Disconnection preserves membership and the readiness requirement. Explicit leave excludes that player from future readiness/voting requirements but retains their findings and score. Re-evaluate progression after a leave.

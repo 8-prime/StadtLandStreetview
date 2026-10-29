@@ -153,6 +153,13 @@ and return after explicit leave are restricted to lobby/category collection.
 Disconnecting retains membership, findings, scores, and readiness requirements;
 explicit leave removes readiness/voting requirements but retains submissions.
 
+During review, casting or changing a vote automatically marks the voter ready.
+Only the finding's owner uses `ready`; when all remaining members have responded,
+the finding is scored and the session immediately opens the next finding (or the
+final scoreboard). There is no result-reveal acknowledgement step. Completed
+results are available in `SessionState.results`; the current review's legacy
+`revealed` and `result` fields remain `false` and `null` for wire compatibility.
+
 `SessionError` has `InvalidInput`, `Forbidden`, `NotFound`, and `Conflict` variants,
 which handlers can map to 400, 403, 404, and 409 respectively. Use its `Display`
 message in the contract's `{ "message": ... }` error response.

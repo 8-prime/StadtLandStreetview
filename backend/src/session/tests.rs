@@ -277,7 +277,9 @@ fn snapshots_only_expose_own_candidates_current_review_and_revealed_results() {
     session.tick(at(61000));
     ready_all(&mut session);
     let item = session.review_queue[0].id;
-    session.vote(players[1], item, Vote::Reject).unwrap();
+    session
+        .vote(players[1], item, Vote::Reject, at(62000))
+        .unwrap();
     let state = session.snapshot(players[0], at(62000)).unwrap();
     let encoded = serde_json::to_value(&state).unwrap();
     assert_eq!(encoded["phase"], "review");
@@ -306,7 +308,7 @@ fn snapshots_only_expose_own_candidates_current_review_and_revealed_results() {
 }
 
 #[test]
-fn voting_checks_ownership_current_item_and_readiness_and_allows_changes() {
+fn votes_count_as_ready_and_the_last_vote_finishes_without_a_reveal_step() {
     let (mut session, players, categories) = searching(3, 1);
     let item = session
         .add_finding(players[0], categories[0], view(), at(2000))
@@ -314,12 +316,12 @@ fn voting_checks_ownership_current_item_and_readiness_and_allows_changes() {
     session.tick(at(61000));
     ready_all(&mut session);
     assert!(matches!(
-        session.vote(players[0], item, Vote::Accept),
+        session.vote(players[0], item, Vote::Accept, at(62000)),
         Err(SessionError::Forbidden(_))
     ));
     assert!(
         session
-            .vote(players[1], Uuid::new_v4(), Vote::Accept)
+            .vote(players[1], Uuid::new_v4(), Vote::Accept, at(62000))
             .is_err()
     );
     assert!(
@@ -330,23 +332,40 @@ fn voting_checks_ownership_current_item_and_readiness_and_allows_changes() {
     session
         .ready(players[0], session.step_id, true, at(62000))
         .unwrap();
-    session.vote(players[1], item, Vote::Accept).unwrap();
     session
-        .ready(players[1], session.step_id, true, at(62000))
+        .vote(players[1], item, Vote::Accept, at(62000))
         .unwrap();
-    session.vote(players[1], item, Vote::Accept).unwrap();
+    assert_eq!(session.phase, Phase::Review);
+    assert!(session.results.is_empty());
     assert!(session.players[&players[1]].is_ready);
-    session.vote(players[1], item, Vote::Reject).unwrap();
-    assert!(!session.players[&players[1]].is_ready);
+    session
+        .vote(players[1], item, Vote::Accept, at(62000))
+        .unwrap();
+    assert!(session.players[&players[1]].is_ready);
+    session
+        .vote(players[1], item, Vote::Reject, at(62000))
+        .unwrap();
+    assert!(session.players[&players[1]].is_ready);
+    assert!(
+        session
+            .ready(players[1], session.step_id, false, at(62000))
+            .is_err()
+    );
     assert!(session.players[&players[0]].is_ready);
-    session.vote(players[2], item, Vote::Accept).unwrap();
-    ready_all(&mut session);
-    assert!(session.revealed);
+    session
+        .vote(players[2], item, Vote::Accept, at(62000))
+        .unwrap();
+    assert_eq!(session.phase, Phase::Finished);
     assert_eq!(session.results[0].accepts, 1);
     assert_eq!(session.results[0].rejects, 1);
     assert!(!session.results[0].accepted);
     assert_eq!(session.players[&players[0]].score, 0);
-    assert!(session.vote(players[1], item, Vote::Accept).is_err());
+    assert!(
+        session
+            .vote(players[1], item, Vote::Accept, at(62000))
+            .is_err()
+    );
+    assert_eq!(session.results.len(), 1);
 }
 
 #[test]
@@ -368,7 +387,9 @@ fn complete_round_awards_each_point_once_and_finishes_after_last_result() {
             .copied()
             .filter(|id| *id != finding.player_id)
             .collect();
-        session.vote(voters[0], finding.id, Vote::Accept).unwrap();
+        session
+            .vote(voters[0], finding.id, Vote::Accept, at(62000))
+            .unwrap();
         session
             .vote(
                 voters[1],
@@ -378,11 +399,19 @@ fn complete_round_awards_each_point_once_and_finishes_after_last_result() {
                 } else {
                     Vote::Reject
                 },
+                at(62000),
             )
             .unwrap();
         let voting_step = session.step_id;
-        ready_all(&mut session);
-        assert!(session.revealed);
+        // Votes alone wait for the owner, who is the only player needing a ready click.
+        assert_eq!(session.review_index, index);
+        session
+            .ready(finding.player_id, voting_step, true, at(62000))
+            .unwrap();
+        assert_ne!(session.step_id, voting_step);
+        assert_eq!(session.review_index, index + 1);
+        assert!(session.players.values().all(|player| !player.is_ready));
+        assert!(session.votes.is_empty());
         assert_eq!(session.results.len(), index + 1);
         assert_eq!(session.results[index].accepted, index % 2 == 0);
         assert!(
@@ -391,7 +420,6 @@ fn complete_round_awards_each_point_once_and_finishes_after_last_result() {
                 .is_err()
         );
         assert_eq!(session.results.len(), index + 1);
-        ready_all(&mut session);
     }
     assert_eq!(session.phase, Phase::Finished);
     assert!(
@@ -422,7 +450,6 @@ fn zero_votes_fail_and_empty_submission_rounds_finish() {
     assert!(!session.results[0].accepted);
     assert_eq!(session.results[0].accepts, 0);
     assert_eq!(session.results[0].rejects, 0);
-    ready_all(&mut session);
     assert_eq!(session.phase, Phase::Finished);
 
     let (mut empty, _, _) = searching(2, 1);
@@ -440,17 +467,16 @@ fn leaving_removes_private_vote_and_rechecks_review_progression() {
         .unwrap();
     session.tick(at(61000));
     ready_all(&mut session);
-    session.vote(players[1], item, Vote::Accept).unwrap();
-    session.vote(players[2], item, Vote::Reject).unwrap();
+    session
+        .vote(players[1], item, Vote::Accept, at(62000))
+        .unwrap();
     session
         .ready(players[0], session.step_id, true, at(62000))
         .unwrap();
-    session
-        .ready(players[1], session.step_id, true, at(62000))
-        .unwrap();
-    assert!(!session.revealed);
+    assert_eq!(session.phase, Phase::Review);
+    assert!(session.results.is_empty());
     session.leave(players[2], at(62000)).unwrap();
-    assert!(session.revealed);
+    assert_eq!(session.phase, Phase::Finished);
     assert!(session.results[0].accepted);
     assert_eq!(session.results[0].rejects, 0);
     assert_eq!(session.players[&players[0]].score, 1);
@@ -459,6 +485,33 @@ fn leaving_removes_private_vote_and_rechecks_review_progression() {
     assert!(session.connect(players[2]).is_err());
     assert!(session.join("Returned".into(), Some(players[2])).is_err());
     session.leave(players[2], at(62000)).unwrap();
+    assert_eq!(session.players[&players[0]].score, 1);
+}
+
+#[test]
+fn a_departed_owner_does_not_block_votes_and_departing_voters_lose_their_vote() {
+    let (mut session, players, categories) = searching(4, 1);
+    let item = session
+        .add_finding(players[0], categories[0], view(), at(2000))
+        .unwrap();
+    session.tick(at(61000));
+    ready_all(&mut session);
+    session
+        .vote(players[1], item, Vote::Reject, at(62000))
+        .unwrap();
+    session.leave(players[1], at(62000)).unwrap();
+    assert!(!session.votes.contains_key(&players[1]));
+    session.leave(players[0], at(62000)).unwrap();
+    session
+        .vote(players[2], item, Vote::Accept, at(62000))
+        .unwrap();
+    assert_eq!(session.phase, Phase::Review);
+    session
+        .vote(players[3], item, Vote::Accept, at(62000))
+        .unwrap();
+    assert_eq!(session.phase, Phase::Finished);
+    assert_eq!(session.results[0].accepts, 2);
+    assert_eq!(session.results[0].rejects, 0);
     assert_eq!(session.players[&players[0]].score, 1);
 }
 
@@ -877,11 +930,15 @@ async fn manager_methods_support_the_full_api_action_sequence() {
     assert_eq!(state.review.unwrap().id, second);
     assert!(state.own_findings.is_empty());
     manager.vote(id, mika, second, Vote::Accept).await.unwrap();
-    manager_ready_all(&manager, id, &[alex, mika]).await;
-    let revealed = manager.get_session(id, alex).await.unwrap();
-    assert!(revealed.review.unwrap().result.unwrap().accepted);
-    assert_eq!(revealed.players[0].score, 1);
-    manager_ready_all(&manager, id, &[alex, mika]).await;
+    let waiting = manager.get_session(id, alex).await.unwrap();
+    assert!(waiting.players[1].ready);
+    manager
+        .ready(id, alex, waiting.step_id, true)
+        .await
+        .unwrap();
+    let finished = manager.get_session(id, alex).await.unwrap();
+    assert!(finished.results[0].accepted);
+    assert_eq!(finished.players[0].score, 1);
     assert_eq!(
         manager.get_session(id, alex).await.unwrap().phase,
         Phase::Finished

@@ -100,7 +100,7 @@ describe('peer progression and findings', () => {
     expect(currentFinding(r)?.playerId).toBe('alex');
   });
 
-  it('requires a vote before readiness, forbids self-voting, treats ties as failure, and completes the round', () => {
+  it('counts votes as ready, waits for the owner, treats ties as failure, and advances without a reveal', () => {
     const r = searching();
     r.categories = [r.categories[0]];
     tick(r, 61000);
@@ -112,15 +112,60 @@ describe('peer progression and findings', () => {
       const current = currentFinding(r)!;
       const voters = r.players.filter(p => p.id !== current.playerId);
       voters.forEach((p, n) => applyAction(r, p.id, { type: 'vote', itemId: current.id, vote: n === 0 ? 'accept' : 'reject' }));
-      readyAll(r);
-      expect(r.revealed).toBe(true);
+      expect(voters.every(p => p.ready)).toBe(true);
+      expect(r.reviewIndex).toBe(i);
+      expect(r.results).toHaveLength(i);
+      const stepId = r.stepId;
+      applyAction(r, current.playerId, { type: 'ready', stepId, ready: true });
+      expect(r.reviewIndex).toBe(i + 1);
+      expect(r.stepId).not.toBe(stepId);
+      expect(r.players.every(p => !p.ready)).toBe(true);
+      expect(r.votes).toEqual({});
       expect(r.results.at(-1)?.accepted).toBe(false);
       expect(() => applyAction(r, 'alex', { type: 'vote', itemId: current.id, vote: 'accept' })).toThrow('closed');
-      readyAll(r);
+      expect(() => applyAction(r, current.playerId, { type: 'ready', stepId, ready: true })).toThrow('moved on');
     }
     expect(r.phase).toBe('finished');
     expect(r.results).toHaveLength(2);
     expect(r.players.every(p => p.score === 0)).toBe(true);
+  });
+
+  it('allows vote changes while waiting and advances on the last vote when the owner is ready', () => {
+    const r = searching();
+    r.categories = [r.categories[0]];
+    tick(r, 61000);
+    readyAll(r);
+    const finding = currentFinding(r)!;
+    const voters = r.players.filter(p => p.id !== finding.playerId);
+    applyAction(r, finding.playerId, { type: 'ready', stepId: r.stepId, ready: true });
+    applyAction(r, voters[0].id, { type: 'vote', itemId: finding.id, vote: 'reject' });
+    applyAction(r, voters[0].id, { type: 'vote', itemId: finding.id, vote: 'accept' });
+    expect(voters[0].ready).toBe(true);
+    expect(() => applyAction(r, voters[0].id, { type: 'ready', stepId: r.stepId, ready: false })).toThrow('Cast your vote');
+    expect(r.reviewIndex).toBe(0);
+    applyAction(r, voters[1].id, { type: 'vote', itemId: finding.id, vote: 'accept' });
+    expect(r.reviewIndex).toBe(1);
+    expect(r.results[0]).toMatchObject({ itemId: finding.id, accepts: 2, rejects: 0, accepted: true });
+    expect(r.players.find(p => p.id === finding.playerId)?.score).toBe(1);
+    expect(() => applyAction(r, voters[1].id, { type: 'vote', itemId: finding.id, vote: 'accept' })).toThrow('closed');
+    expect(r.results).toHaveLength(1);
+  });
+
+  it('removes departed players from review requirements and preserves their submissions', () => {
+    const r = searching();
+    tick(r, 61000);
+    readyAll(r);
+    const finding = currentFinding(r)!;
+    const voters = r.players.filter(p => p.id !== finding.playerId);
+    const owner = r.players.find(p => p.id === finding.playerId)!;
+    owner.left = true;
+    applyAction(r, voters[0].id, { type: 'vote', itemId: finding.id, vote: 'accept' });
+    expect(r.results).toHaveLength(0);
+    voters[1].left = true;
+    reconcile(r);
+    expect(r.reviewIndex).toBe(1);
+    expect(r.results[0]).toMatchObject({ itemId: finding.id, accepted: true, accepts: 1 });
+    expect(owner.score).toBe(1);
   });
 
   it('keeps disconnected peers in readiness but excludes explicit departures', () => {

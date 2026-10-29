@@ -60,7 +60,7 @@ async function assertGameViewport(page: Page) {
   await page.setViewportSize(original);
 }
 
-test('solo demo runs from lobby through candidate selection and all review results', async ({ page }) => {
+test('solo demo runs through selection and automatic voting progression', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
@@ -89,14 +89,15 @@ test('solo demo runs from lobby through candidate selection and all review resul
   await expect(page.getByText('A moment for your find.')).toBeVisible();
   for (let index = 0; index < 3; index++) {
     if (index > 0) {
-      await expect(page.getByRole('button', { name: 'I’m ready', exact: true })).toBeDisabled();
+      await expect(page.getByRole('button', { name: 'I’m ready', exact: true })).toHaveCount(0);
       if (index === 1) await capture(page, 'review');
+      const stepId = (await state(page)).stepId;
       await page.getByRole('button', { name: 'Matches', exact: true }).click();
+      await expect.poll(async () => (await state(page)).stepId).not.toBe(stepId);
+    } else {
+      await readyAndAdvance(page);
     }
-    await readyAndAdvance(page);
-    await expect(page.getByText('THE GROUP HAS SPOKEN')).toBeVisible();
-    if (index === 0) await capture(page, 'result-reveal');
-    await readyAndAdvance(page);
+    await expect(page.getByText('THE GROUP HAS SPOKEN')).toHaveCount(0);
   }
   await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   expect(errors).toEqual([]);
@@ -156,21 +157,26 @@ test('two peers share readiness, category edits reset agreement, and refresh res
   await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await expect(page.getByText('A moment for your find.')).toBeVisible();
   await expect(second.getByText('A match, or a stretch?')).toBeVisible();
+  await expect(second.getByRole('button', { name: 'I’m ready', exact: true })).toHaveCount(0);
   await second.getByRole('button', { name: 'Doesn’t match', exact: true }).click();
+  await expect(second.getByText('Vote cast. Waiting for the crew — no ready click needed.')).toBeVisible();
+  await expect(page.getByText('A moment for your find.')).toBeVisible();
+  await second.getByRole('button', { name: 'Matches', exact: true }).click();
+  await expect(second.getByRole('button', { name: /Matches/ })).toHaveAttribute('aria-pressed', 'true');
+  await second.getByRole('button', { name: 'Doesn’t match', exact: true }).click();
+  await expect(second.getByRole('button', { name: /Doesn’t match/ })).toHaveAttribute('aria-pressed', 'true');
+  await second.reload();
+  await expect(second.getByRole('button', { name: /Doesn’t match/ })).toHaveAttribute('aria-pressed', 'true');
+  await expect(second.getByRole('button', { name: /ready/i })).toHaveCount(0);
+  await assertGameViewport(second);
   await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
-  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
-  await expect(page.getByText('Not quite a match.')).toBeVisible();
-  await expect(second.getByText('Not quite a match.')).toBeVisible();
-  await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
-  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await expect(page.getByText('A match, or a stretch?')).toBeVisible();
   await expect(second.getByText('A moment for your find.')).toBeVisible();
+  expect((await state(page)).results[0].accepted).toBe(false);
+  await expect(page.getByText('THE GROUP HAS SPOKEN')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'I’m ready', exact: true })).toHaveCount(0);
+  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await page.getByRole('button', { name: 'Matches', exact: true }).click();
-  await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
-  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
-  await expect(page.getByText('That’s a match.')).toBeVisible();
-  await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
-  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   await expect(second.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   expect((await state(page)).results).toHaveLength(2);
@@ -225,7 +231,6 @@ test('maximum crew, long categories, and twelve candidates remain accessible wit
       room.stepId = crypto.randomUUID();
       room.searchEndsAt = Date.now() + 600000;
       room.reviewIndex = 12;
-      room.revealed = false;
       if (next === 'finished') room.results = [{ itemId: 'candidate-0', categoryId: 'category-0', playerId: room.players[0].id, accepted: true, accepts: 8, rejects: 3 }];
       room.revision++;
       localStorage.setItem(`sls:room:${id}`, JSON.stringify(room));
