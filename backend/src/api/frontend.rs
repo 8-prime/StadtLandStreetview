@@ -199,6 +199,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn api_origin_policy_does_not_block_public_files_or_override_their_caching() {
+        let app = router(AppState::new(
+            SessionManager::new(),
+            ApiConfig {
+                secure_cookies: true,
+                public_origin: Some("https://game.example".parse().unwrap()),
+            },
+        ));
+        let asset = Frontend::iter()
+            .find(|name| name.starts_with("assets/") && name.ends_with(".js"))
+            .unwrap();
+        for (path, status, cache_control) in [
+            ("/", StatusCode::OK, "no-cache"),
+            ("/favicon.svg", StatusCode::OK, "no-cache"),
+            (
+                &format!("/{asset}"),
+                StatusCode::OK,
+                "public, max-age=31536000, immutable",
+            ),
+            ("/api", StatusCode::FORBIDDEN, "no-store"),
+            ("/api/unknown", StatusCode::FORBIDDEN, "no-store"),
+            ("/api/sessions", StatusCode::FORBIDDEN, "no-store"),
+        ] {
+            let request = Request::get(path)
+                .header(header::HOST, "backend:3000")
+                .header(header::ORIGIN, "https://other.example")
+                .body(Body::empty())
+                .unwrap();
+            let response = app.clone().oneshot(request).await.unwrap();
+            assert_eq!(response.status(), status, "{path}");
+            assert_eq!(
+                response.headers()[header::CACHE_CONTROL],
+                cache_control,
+                "{path}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn missing_assets_api_paths_and_traversal_do_not_fall_back_to_html() {
         for path in [
             "/assets/missing.js",
