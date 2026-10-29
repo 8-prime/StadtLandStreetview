@@ -1,4 +1,4 @@
-import type { Action, Category, Finding, Phase, Player, ReviewResult, SessionState, Vote } from './types';
+import type { Action, Category, Finding, Phase, Player, ReviewResult, RoomSettings, SessionState, Vote } from './types';
 
 export interface Room {
   id: string;
@@ -6,6 +6,7 @@ export interface Room {
   stepId: string;
   phase: Phase;
   demo: boolean;
+  settings: RoomSettings;
   durationSeconds: number;
   searchEndsAt: number | null;
   players: (Player & { bot: boolean; lastSeen: number })[];
@@ -21,10 +22,10 @@ export interface Room {
 export const uid = () => crypto.randomUUID();
 export const demoView = (scene = 0) => ({ panoramaId: `demo-${scene}`, position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1, demoScene: scene });
 
-export function createRoom(id: string, name: string, playerId: string, durationSeconds: number, demo: boolean): Room {
+export function createRoom(id: string, name: string, playerId: string, durationSeconds: number, demo: boolean, settings: RoomSettings = { proximityEnabled: false }): Room {
   const names = demo ? [name, 'Mika', 'Jules'] : [name];
   return {
-    id, revision: 0, stepId: uid(), phase: 'lobby', demo, durationSeconds,
+    id, revision: 0, stepId: uid(), phase: 'lobby', demo, durationSeconds, settings,
     searchEndsAt: null, categories: [], findings: [], selections: {}, queue: [],
     reviewIndex: 0, votes: {}, results: [],
     players: names.map((n, i) => ({ id: i === 0 ? playerId : uid(), name: n, ready: false, connected: true, color: i, score: 0, left: false, bot: i > 0, lastSeen: Date.now() })),
@@ -176,7 +177,7 @@ export function snapshot(room: Room, meId: string): SessionState {
   const finding = currentFinding(room);
   return structuredClone({
     id: room.id, revision: room.revision, stepId: room.stepId, phase: room.phase, meId,
-    demo: room.demo, durationSeconds: room.durationSeconds, serverTime: Date.now(), searchEndsAt: room.searchEndsAt,
+    demo: room.demo, settings: room.settings ?? { proximityEnabled: false }, durationSeconds: room.durationSeconds, serverTime: Date.now(), searchEndsAt: room.searchEndsAt,
     players: room.players.map(({ bot: _bot, lastSeen: _seen, ...p }) => p), categories: room.categories,
     ownFindings: room.findings.filter(f => f.playerId === meId), selections: room.selections[meId] ?? {},
     review: room.phase === 'review' && finding ? {

@@ -27,7 +27,7 @@ pub(super) async fn create(
 ) -> ApiResult<Response> {
     let membership = state
         .sessions
-        .start_session(info.name, info.duration_seconds)
+        .start_session_with_settings(info.name, info.duration_seconds, info.settings)
         .await?;
     let (token, identity) = state.credentials.establish(&headers).await;
     identity

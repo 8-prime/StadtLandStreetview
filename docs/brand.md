@@ -10,6 +10,7 @@ Stadt Land Streetview is a party game for people who treat a badly parked hatchb
 - **Characters:** flat, outlined SVG spotters with compatible hats, hair, glasses, clothing, skin tones, cameras, notebooks, and binoculars. Distinct silhouettes and accessories should read at avatar size.
 - **Typography:** locally bundled Bricolage Grotesque for logo/headings; Nunito Sans for readable controls and supporting text. Strong hierarchy, short labels, tabular countdown digits.
 - **Surfaces:** crisp solid fills, thick asphalt outlines, small hard shadows, evidence-ticket details, and restrained street-map dots. The Google map and submitted viewpoints remain the focus of active play.
+- **Neighbourhood radio:** optional search equipment, drawn as a compact walkie-talkie beside the timer. A speaker grille, antenna, dial, and inset display give proximity signals a place in the game world. Its quiet/navy, nearby/yellow, and very close/coral states include explicit text and preserve the camera aperture.
 - **Voice:** short and situational. “Eyes on everything.” “Evidence secured.” “Match or massive stretch?” Instructional copy stays explicit where a player needs to act.
 
 | Color | Value | Use |

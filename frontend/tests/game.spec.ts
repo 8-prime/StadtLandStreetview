@@ -64,6 +64,7 @@ test('solo demo runs through selection and automatic voting progression', async 
   const errors: string[] = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
+  await page.getByRole('checkbox', { name: /Neighbourhood radio/ }).check();
   await page.getByRole('button', { name: /Try the solo demo/ }).click();
   await expect(page.getByRole('heading', { name: 'The curious crew' })).toBeVisible();
   await capture(page, 'lobby');

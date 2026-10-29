@@ -56,6 +56,7 @@ Each player gets a Google Maps view **without search**, with a **Map / Satellite
 - Players can work on the categories in any order and switch between them freely.
 - A player can save their current Street View as a finding for any category.
 - Players may save multiple candidate findings for the same category during the search.
+- The optional **Neighbourhood radio** room setting adds anonymous signals when another Street View player is within 5 km, with a stronger signal within 250 m. It is off by default and shows no names, direction, or exact distance.
 - Players can mark **Done searching** and undo while waiting. If every active player is ready, searching ends early; otherwise it ends at the shared deadline. Saving or changing evidence clears that player's readiness.
 
 ### Final selection after searching ends

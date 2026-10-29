@@ -5,8 +5,8 @@ use tokio::sync::{RwLock, broadcast};
 use uuid::Uuid;
 
 use super::{
-    Phase, Result, Session, SessionError, SessionEvent, SessionMembership, SessionState, Viewpoint,
-    Vote, new_room_code,
+    Phase, Position, ProximityState, Result, RoomSettings, Session, SessionError, SessionEvent,
+    SessionMembership, SessionState, Viewpoint, Vote, new_room_code,
 };
 
 struct SessionHandle {
@@ -39,7 +39,18 @@ impl SessionManager {
         name: String,
         duration_sec: u64,
     ) -> Result<SessionMembership> {
+        self.start_session_with_settings(name, duration_sec, RoomSettings::default())
+            .await
+    }
+
+    pub async fn start_session_with_settings(
+        &self,
+        name: String,
+        duration_sec: u64,
+        settings: RoomSettings,
+    ) -> Result<SessionMembership> {
         let mut session = Session::new(duration_sec, Utc::now())?;
+        session.settings = settings;
         let player_id = session.join(name, None)?;
         let mut sessions = self.sessions.write().await;
         while sessions.contains_key(&session.id) {
@@ -59,6 +70,40 @@ impl SessionManager {
             session_id,
             player_id,
         })
+    }
+
+    // Presence does not mutate game revisions or publish snapshot invalidations.
+    pub async fn report_position(
+        &self,
+        session_id: &str,
+        player_id: Uuid,
+        connection_id: Uuid,
+        step_id: Uuid,
+        position: Option<Position>,
+    ) -> Result<()> {
+        let handle = self.find(session_id).await?;
+        let mut session = handle.state.write().await;
+        if session.search_expired(Utc::now()) {
+            return Err(SessionError::Conflict("Searching has ended."));
+        }
+        session.report_position(
+            player_id,
+            connection_id,
+            step_id,
+            position,
+            tokio::time::Instant::now(),
+        )
+    }
+
+    pub async fn proximity(
+        &self,
+        session_id: &str,
+        player_id: Uuid,
+    ) -> Result<Option<ProximityState>> {
+        let handle = self.find(session_id).await?;
+        let session = handle.state.read().await;
+        session.active_player(player_id)?;
+        Ok(session.proximity_for(player_id, tokio::time::Instant::now()))
     }
 
     /// Pass an existing player only when resuming a verified membership.

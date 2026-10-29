@@ -128,6 +128,7 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | API operation | Manager method | Result |
 | --- | --- | --- |
 | Create | `start_session(name, duration_sec)` | `SessionMembership { session_id, player_id }` |
+| Create with room options | `start_session_with_settings(name, duration_sec, RoomSettings)` | Same membership; settings default to radio off |
 | Join/resume | `join_session(id, name, existing_player)` | Player ID |
 | Leave | `leave_session(id, player)` | `()` |
 | Snapshot | `get_session(id, player)` | Personalized `SessionState` |
@@ -141,6 +142,8 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | Vote | `vote(id, player, item, Vote::Accept / Vote::Reject)` | `()` |
 | Open WebSocket | `connect(id, player)` | `SessionConnection { connection_id, updates }` |
 | Close WebSocket | `disconnect(id, player, connection_id)` | `()` |
+| Street View presence | `report_position(id, player, connection_id, step_id, position)` | `()`; separate from game revisions |
+| Personalized radio | `proximity(id, player)` | Optional `{ stepId, band }`; no peer coordinates |
 
 The creation `name` is the player's display name. Creation generates a unique
 six-character uppercase room code and establishes that player's membership. The
@@ -189,6 +192,14 @@ outgoing write to 10 seconds. Receive, send, heartbeat, and shutdown futures run
 concurrently; ending one cancels the others before unregistering that connection.
 Registration happens after a successful upgrade, so failed upgrades do not leave
 phantom presence. Explicit leave closes all of that player's sockets.
+
+When the optional neighbourhood radio is enabled, the receive loop also accepts
+authenticated `position` frames during searching. The sender checks each player's
+anonymous proximity band once per second and sends a dedicated `proximity` frame
+only when it changes. Nearby means within 5 km; very close means within 250 m.
+Presence is held per connection, expires after 15 seconds, and is cleared at phase
+transitions. These updates never increment game revisions, broadcast snapshots,
+or call external map services. See the [wire protocol](../docs/api.md#optional-neighbourhood-radio).
 
 ## Rules and limits
 

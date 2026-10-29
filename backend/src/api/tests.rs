@@ -830,6 +830,121 @@ async fn connected(server: &Server, id: &str, cookie: &str, expected: bool) {
 }
 
 #[tokio::test]
+async fn room_creation_defaults_radio_off_and_shares_the_optional_setting() {
+    let (_, app) = app();
+    let (ordinary, ordinary_cookie) = create(&app, "Alex", None).await;
+    assert_eq!(
+        snapshot(&app, &ordinary, &ordinary_cookie).await["settings"]["proximityEnabled"],
+        false
+    );
+    let reply = request(
+        &app,
+        Method::POST,
+        "/api/sessions",
+        None,
+        Some(json!({
+            "name": "Alex", "durationSeconds": 60, "settings": { "proximityEnabled": true }
+        })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CREATED);
+    let id = reply.id();
+    let other = join(&app, &id, "Mika", None).await;
+    assert_eq!(
+        snapshot(&app, &id, &other).await["settings"]["proximityEnabled"],
+        true
+    );
+}
+
+#[tokio::test]
+async fn websocket_radio_sends_anonymous_bands_without_game_invalidations() {
+    let server = Server::start(websocket::SocketSettings::default()).await;
+    let created = request(
+        &server.app,
+        Method::POST,
+        "/api/sessions",
+        None,
+        Some(json!({
+            "name": "Alex", "durationSeconds": 60, "settings": { "proximityEnabled": true }
+        })),
+    )
+    .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let id = created.id();
+    let alex = created.cookie();
+    let mika = join(&server.app, &id, "Mika", None).await;
+    ready_all(&server.app, &id, &[&alex, &mika]).await;
+    let added = request(
+        &server.app,
+        Method::POST,
+        &format!("/api/sessions/{id}/categories"),
+        Some(&alex),
+        Some(json!({ "text": "Door" })),
+    )
+    .await;
+    assert_eq!(added.status, StatusCode::CREATED);
+    ready_all(&server.app, &id, &[&alex, &mika]).await;
+    let mut first = server.socket(&id, Some(&alex), None).await.unwrap();
+    let mut second = server.socket(&id, Some(&mika), None).await.unwrap();
+    connected(&server, &id, &alex, true).await;
+    connected(&server, &id, &mika, true).await;
+    let before = snapshot(&server.app, &id, &alex).await;
+    let step = before["stepId"].clone();
+    for (socket, lng) in [(&mut first, 0.0), (&mut second, 0.04)] {
+        socket
+            .send(WsMessage::Text(
+                json!({ "type": "position", "stepId": step, "position": { "lat": 0, "lng": lng } })
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+    }
+    async fn band(socket: &mut Socket, expected: &str) -> Value {
+        timeout(Duration::from_secs(4), async {
+            loop {
+                match socket.next().await.unwrap().unwrap() {
+                    WsMessage::Text(text) => {
+                        let value: Value = serde_json::from_str(&text).unwrap();
+                        if value["type"] == "proximity" && value["band"] == expected {
+                            return value;
+                        }
+                    }
+                    WsMessage::Ping(data) => socket.send(WsMessage::Pong(data)).await.unwrap(),
+                    other => panic!("Unexpected frame: {other:?}"),
+                }
+            }
+        })
+        .await
+        .unwrap()
+    }
+    let nearby = band(&mut first, "nearby").await;
+    assert_eq!(nearby.as_object().unwrap().len(), 3);
+    assert_eq!(nearby["stepId"], step);
+    band(&mut second, "nearby").await;
+    assert_eq!(
+        snapshot(&server.app, &id, &alex).await["revision"],
+        before["revision"]
+    );
+    second
+        .send(WsMessage::Text(
+            json!({ "type": "position", "stepId": step, "position": null })
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    band(&mut first, "quiet").await;
+    band(&mut second, "inactive").await;
+    assert_eq!(
+        snapshot(&server.app, &id, &alex).await["revision"],
+        before["revision"]
+    );
+    first.close(None).await.unwrap();
+    second.close(None).await.unwrap();
+}
+
+#[tokio::test]
 async fn websocket_authentication_fanout_and_connection_cleanup_use_the_manager() {
     let server = Server::start(websocket::SocketSettings::default()).await;
     let (id, alex) = create(&server.app, "Alex", None).await;

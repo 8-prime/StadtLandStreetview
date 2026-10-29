@@ -10,6 +10,29 @@ pub struct Position {
     pub lng: f64,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RoomSettings {
+    #[serde(default)]
+    pub proximity_enabled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ProximityBand {
+    Inactive,
+    Quiet,
+    Nearby,
+    Close,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProximityState {
+    pub step_id: Uuid,
+    pub band: ProximityBand,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Viewpoint {
@@ -103,6 +126,7 @@ pub struct SessionState {
     pub phase: Phase,
     pub me_id: Uuid,
     pub demo: bool,
+    pub settings: RoomSettings,
     pub duration_seconds: u64,
     pub server_time: i64,
     pub search_ends_at: Option<i64>,
@@ -119,6 +143,8 @@ pub struct SessionState {
 pub struct SessionStartInfo {
     pub name: String,
     pub duration_seconds: u64,
+    #[serde(default)]
+    pub settings: RoomSettings,
 }
 
 /// The API uses this to establish a credential for the newly created member.

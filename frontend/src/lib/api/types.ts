@@ -1,6 +1,10 @@
 export type Phase = 'lobby' | 'categories' | 'searching' | 'selection' | 'review' | 'finished';
 export type Vote = 'accept' | 'reject';
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'offline';
+export interface RoomSettings { proximityEnabled: boolean }
+export type ProximityBand = 'inactive' | 'quiet' | 'nearby' | 'close';
+export interface ProximityState { stepId: string; band: ProximityBand }
+export interface PositionReport { stepId: string; position: { lat: number; lng: number } | null }
 
 export interface Viewpoint {
   panoramaId: string;
@@ -57,6 +61,7 @@ export interface SessionState {
   phase: Phase;
   meId: string;
   demo: boolean;
+  settings: RoomSettings;
   durationSeconds: number;
   serverTime: number;
   searchEndsAt: number | null;
@@ -79,10 +84,11 @@ export type Action =
   | { type: 'vote'; itemId: string; vote: Vote };
 
 export interface SessionApi {
-  create(name: string, durationSeconds: number, demo?: boolean): Promise<string>;
+  create(name: string, durationSeconds: number, demo?: boolean, settings?: RoomSettings): Promise<string>;
   join(id: string, name: string): Promise<void>;
   get(id: string): Promise<SessionState>;
   send(id: string, action: Action): Promise<void>;
   leave(id: string): Promise<void>;
-  subscribe(id: string, state: (value: SessionState) => void, connection: (value: Connection) => void, error: (message: string) => void): () => void;
+  reportPosition(id: string, report: PositionReport): void;
+  subscribe(id: string, state: (value: SessionState) => void, connection: (value: Connection) => void, error: (message: string) => void, proximity?: (value: ProximityState) => void): () => void;
 }

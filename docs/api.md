@@ -19,11 +19,11 @@ All paths below are relative to `/api`.
 
 | Method | Path | Request / response |
 | --- | --- | --- |
-| POST | `/sessions` | `{ name, durationSeconds }` → `{ id }`; establish membership |
+| POST | `/sessions` | `{ name, durationSeconds, settings?: { proximityEnabled?: boolean } }` → `{ id }`; establish membership; radio defaults off |
 | POST | `/sessions/{sessionId}/join` | `{ name }`; establish or resume membership |
 | POST | `/sessions/{sessionId}/leave` | Explicitly leave; preserve submissions and scores |
 | GET | `/sessions/{sessionId}` | A personalized `SessionState` snapshot |
-| WebSocket | `/sessions/{sessionId}/ws` | State-change notifications; cookie-authenticated |
+| WebSocket | `/sessions/{sessionId}/ws` | State-change notifications and optional proximity presence; cookie-authenticated |
 | PUT | `/sessions/{sessionId}/ready` | `{ stepId, ready }` |
 | POST | `/sessions/{sessionId}/categories` | `{ text }` |
 | PATCH | `/sessions/{sessionId}/categories/{categoryId}` | `{ text }` |
@@ -60,6 +60,7 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 | `phase` | `lobby`, `categories`, `searching`, `selection`, `review`, or `finished` |
 | `meId` | Authenticated player's ID |
 | `demo` | `false` for backend rooms |
+| `settings` | `{ proximityEnabled: boolean }`; fixed at room creation and shared by all players |
 | `durationSeconds`, `serverTime`, `searchEndsAt` | Duration, server clock, and deadline (`null` before searching) |
 | `players` | `{ id, name, color, ready, connected, score, left }[]`; color is a palette index 0–5 |
 | `categories` | Ordered `{ id, text }[]` |
@@ -90,9 +91,29 @@ Do not expose other players' candidate collections, future review findings, priv
 
 ## WebSocket behavior
 
-The frontend fetches a snapshot after connecting and after **any** WebSocket message. A minimal notification such as `{ "type": "state-changed" }` is sufficient. Broadcast after every mutation and timer-driven transition.
+The frontend fetches a snapshot after connecting and after game state-change messages. A minimal notification such as `{ "type": "state-changed" }` is sufficient. Broadcast after every game mutation and timer-driven transition. Proximity messages update the radio directly and do not trigger a snapshot fetch or increment game revisions.
 
 The client reconnects with exponential backoff (up to 15 seconds) and resynchronizes with GET. Snapshots older than the last applied revision are ignored. HTTP actions are disabled while the socket is disconnected. Use server WebSocket ping/pong for liveness; a separate HTTP heartbeat is not required.
+
+### Optional neighbourhood radio
+
+Enable `settings.proximityEnabled` when creating a room. During searching only, a client reports the position of its visible, valid Street View panorama over its authenticated WebSocket:
+
+```json
+{ "type": "position", "stepId": "current-search-step", "position": { "lat": 52.52, "lng": 13.405 } }
+```
+
+Send `position: null` when leaving Street View. The client sends changed coordinates at most once per second, repeats a stationary position every five seconds, and reports again after reconnecting. Looking around or zooming does not add position updates. The server accepts coordinates only for the socket's own active player, connection, and current search step; invalid and stale frames are ignored. Incoming non-null positions are limited to one accepted frame per 750 ms per socket; clearing a position is immediate.
+
+The server checks proximity once per second and sends a personalized message only when its band or step changes:
+
+```json
+{ "type": "proximity", "stepId": "current-search-step", "band": "nearby" }
+```
+
+Bands are `inactive` (no fresh position for this player), `quiet` (no fresh peer within 5 km), `nearby` (nearest peer within 5 km), and `close` (nearest peer within 250 m). Distances are geographic straight-line distances. Only the band is returned: identities, coordinates, exact distances, counts, and directions are not included. The client associates messages with their search step, including messages arriving before a corresponding snapshot.
+
+Positions expire after 15 seconds without an update, are cleared on disconnect/leave and phase transitions, and are never stored in game snapshots or findings. Multiple sockets belonging to the same player use the most recently reported fresh position; closing one socket removes only its own presence. The local prototype keeps separate timestamped presence records for cross-tab synchronization; illustrated demo peers use simulated positions. No additional Google Maps calls are needed for the distance calculation.
 
 ## Progression rules used by the UI
 

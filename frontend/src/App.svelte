@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, mockMode } from './lib/api';
-  import type { Action, Connection, SessionState } from './lib/api/types';
+  import type { Action, Connection, ProximityState, RoomSettings, SessionState } from './lib/api/types';
   import Icon from './lib/components/Icon.svelte';
   import ReadyBar from './lib/components/ReadyBar.svelte';
   import GameLogo from './lib/components/GameLogo.svelte';
@@ -23,6 +23,7 @@
   let error = $state('');
   let notice = $state('');
   let connection = $state<Connection>('connecting');
+  let proximity = $state<ProximityState | null>(null);
   let showRules = $state(false);
   let rulesPage = $state(0);
   const rules = [
@@ -60,6 +61,7 @@
     unsubscribe?.();
     unsubscribe = undefined;
     session = null;
+    proximity = null;
     error = '';
     const match = location.hash.match(/^#\/room\/([A-Za-z0-9_-]{1,64})$/);
     roomCode = match?.[1] ?? '';
@@ -70,15 +72,15 @@
       const state = await api.get(id);
       if (version !== routeVersion) return;
       receive(state);
-      unsubscribe = api.subscribe(id, receive, value => connection = value, message => error = message);
+      unsubscribe = api.subscribe(id, receive, value => { connection = value; if (value !== 'connected') proximity = null; }, message => error = message, value => { if (version === routeVersion) proximity = value; });
     } catch { /* A shared room link opens the join form until identity is established. */ }
     finally { if (version === routeVersion) loading = false; }
   }
-  async function enter(name: string, duration: number, demo: boolean, id?: string) {
+  async function enter(name: string, duration: number, demo: boolean, id?: string, settings: RoomSettings = { proximityEnabled: false }) {
     if (!name.trim() || busy) return;
     busy = true; error = '';
     try {
-      const room = id || await api.create(name, duration, demo);
+      const room = id || await api.create(name, duration, demo, settings);
       if (id) await api.join(id, name);
       const hash = `#/room/${encodeURIComponent(room)}`;
       if (location.hash === hash) await route(); else location.hash = hash;
@@ -133,11 +135,11 @@
 
 <div id="main-content" tabindex="-1">
 {#if loading}<main class="loading-page"><span class="spinner"></span><h2>Finding your people…</h2></main>
-{:else if !session}<Home {busy} {roomCode} oncreate={(name, duration, demo) => enter(name, duration, demo)} onjoin={(code, name) => enter(name, 600, false, code)}/>
+{:else if !session}<Home {busy} {roomCode} oncreate={(name, duration, demo, settings) => enter(name, duration, demo, undefined, settings)} onjoin={(code, name) => enter(name, 600, false, code)}/>
 {:else}{#key `${session.id}:${session.meId}`}<MapsSession><main class="game-main phase-{session.phase}">
   {#if session.phase === 'lobby'}<Lobby {session} oncopy={copyInvite}/>
   {:else if session.phase === 'categories'}<Categories {session} {busy} onaction={act}/>
-  {:else if session.phase === 'searching'}<Search {session} {busy} onaction={act}/>
+  {:else if session.phase === 'searching'}<Search {session} {busy} connected={connection === 'connected'} proximity={proximity?.stepId === session.stepId ? proximity.band : 'inactive'} onaction={act}/>
   {:else if session.phase === 'selection'}<Selection {session} {busy} onaction={act}/>
   {:else if session.phase === 'review' && session.review}<Review {session} {busy} onaction={act}/>
   {:else if session.phase === 'finished'}<Results {session} onhome={() => leaveDialog.showModal()}/>{/if}

@@ -11,6 +11,7 @@ use futures_util::{
     SinkExt, StreamExt,
     stream::{SplitSink, SplitStream},
 };
+use serde::Deserialize;
 use tokio::{
     sync::{broadcast, watch},
     time::{Instant, MissedTickBehavior, interval_at, sleep_until, timeout},
@@ -21,7 +22,21 @@ use super::{
     auth::Member,
     error::{ApiError, ApiResult},
 };
-use crate::session::{SessionConnection, SessionEvent};
+use crate::session::{Position, SessionConnection, SessionEvent};
+
+#[derive(Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "kebab-case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+enum PresenceMessage {
+    Position {
+        step_id: uuid::Uuid,
+        position: Option<Position>,
+    },
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct SocketSettings {
@@ -75,7 +90,7 @@ async fn serve(socket: WebSocket, state: AppState, member: Member) {
     let mut shutdown = state.shutdown.subscribe();
     {
         let send = send_updates(&mut outgoing, updates, &state, &member);
-        let receive = receive_messages(incoming, pongs);
+        let receive = receive_messages(incoming, pongs, &state, &member, connection_id);
         let heartbeat = heartbeat_expired(last_pong, state.socket_settings.heartbeat_timeout);
         let stop = async {
             if !*shutdown.borrow() {
@@ -113,6 +128,9 @@ async fn send_updates(
         settings.ping_interval,
     );
     ping.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut proximity_tick = interval_at(Instant::now(), Duration::from_secs(1));
+    proximity_tick.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut last_proximity = None;
     loop {
         let message = tokio::select! {
             event = updates.recv() => {
@@ -132,6 +150,13 @@ async fn send_updates(
                 Message::Text(payload.into())
             }
             _ = ping.tick() => Message::Ping(Default::default()),
+            _ = proximity_tick.tick() => {
+                let Ok(proximity) = state.sessions.proximity(&member.session_id, member.player_id).await else { break; };
+                if proximity == last_proximity { continue; }
+                last_proximity = proximity;
+                let Some(proximity) = proximity else { continue; };
+                Message::Text(serde_json::json!({ "type": "proximity", "stepId": proximity.step_id, "band": proximity.band }).to_string().into())
+            }
         };
         if !matches!(
             timeout(settings.send_timeout, outgoing.send(message)).await,
@@ -142,12 +167,46 @@ async fn send_updates(
     }
 }
 
-async fn receive_messages(mut incoming: SplitStream<WebSocket>, pongs: watch::Sender<Instant>) {
+async fn receive_messages(
+    mut incoming: SplitStream<WebSocket>,
+    pongs: watch::Sender<Instant>,
+    state: &AppState,
+    member: &Member,
+    connection_id: uuid::Uuid,
+) {
+    let mut last_position = None;
     while let Some(Ok(message)) = incoming.next().await {
         match message {
             Message::Close(_) => break,
             Message::Pong(_) => {
                 pongs.send_replace(Instant::now());
+            }
+            Message::Text(text) => {
+                if let Ok(PresenceMessage::Position { step_id, position }) =
+                    serde_json::from_str(&text)
+                {
+                    let now = Instant::now();
+                    if position.is_some()
+                        && last_position.is_some_and(|last| {
+                            now.duration_since(last) < Duration::from_millis(750)
+                        })
+                    {
+                        continue;
+                    }
+                    if position.is_some() {
+                        last_position = Some(now);
+                    }
+                    let _ = state
+                        .sessions
+                        .report_position(
+                            &member.session_id,
+                            member.player_id,
+                            connection_id,
+                            step_id,
+                            position,
+                        )
+                        .await;
+                }
             }
             // Axum handles protocol Ping replies. Game actions use authenticated HTTP.
             _ => {}

@@ -1,8 +1,10 @@
 import { applyAction, createRoom, reconcile, simulatePeers, snapshot, tick, uid, type Room } from './engine';
-import type { SessionApi } from './types';
+import type { PositionReport, SessionApi } from './types';
+import { presenceLifetime, proximityBand } from './proximity';
 
 const roomKey = (id: string) => `sls:room:${id}`;
 const identityKey = (id: string) => `sls:identity:${id}`;
+const presenceKey = (id: string, playerId: string) => `sls:presence:${id}:${playerId}`;
 const read = (id: string): Room => {
   const value = localStorage.getItem(roomKey(id));
   if (!value) throw new Error('Room not found. Local rooms work only in this browser; try creating a new one.');
@@ -31,11 +33,11 @@ async function update(id: string, action: (room: Room) => void) {
 }
 
 export const mockApi: SessionApi = {
-  async create(name, durationSeconds, demo = false) {
+  async create(name, durationSeconds, demo = false, settings = { proximityEnabled: false }) {
     let id: string;
     do { id = uid().replaceAll('-', '').slice(0, 6).toUpperCase(); } while (localStorage.getItem(roomKey(id)));
     const playerId = uid();
-    const room = createRoom(id, name.trim().slice(0, 24), playerId, durationSeconds, demo);
+    const room = createRoom(id, name.trim().slice(0, 24), playerId, durationSeconds, demo, settings);
     sessionStorage.setItem(identityKey(id), playerId);
     save(room);
     return id;
@@ -65,10 +67,51 @@ export const mockApi: SessionApi = {
       reconcile(room);
     });
     sessionStorage.removeItem(identityKey(id));
+    localStorage.removeItem(presenceKey(id, playerId));
   },
-  subscribe(id, onState, onConnection, onError) {
+  reportPosition(id, report) {
+    try {
+      const room = read(id);
+      const playerId = identity(id);
+      const key = presenceKey(id, playerId);
+      if (!report.position) {
+        const previous = localStorage.getItem(key);
+        if (previous && JSON.parse(previous).stepId !== report.stepId) return;
+        localStorage.removeItem(key);
+      } else {
+        if (!room.settings?.proximityEnabled || room.phase !== 'searching' || room.stepId !== report.stepId) return;
+        if (!Number.isFinite(report.position.lat) || !Number.isFinite(report.position.lng) || Math.abs(report.position.lat) > 90 || Math.abs(report.position.lng) > 180) return;
+        localStorage.setItem(key, JSON.stringify({ ...report, updatedAt: Date.now() }));
+      }
+      window.dispatchEvent(new CustomEvent('sls:presence', { detail: id }));
+    } catch { /* A late camera update may outlive a room membership. */ }
+  },
+  subscribe(id, onState, onConnection, onError, onProximity) {
+    const subscriberId = identity(id);
     let disposed = false;
     let lastRevision = -1;
+    let lastProximity = '';
+    const emitProximity = () => {
+      if (disposed || !onProximity) return;
+      try {
+        const room = read(id);
+        if (!room.settings?.proximityEnabled || room.phase !== 'searching') return;
+        const meId = identity(id);
+        const position = (playerId: string) => {
+          const value = localStorage.getItem(presenceKey(id, playerId));
+          if (!value) return null;
+          const presence: PositionReport & { updatedAt: number } = JSON.parse(value);
+          return presence.stepId === room.stepId && Date.now() - presence.updatedAt < presenceLifetime ? presence.position : null;
+        };
+        const others = room.players.filter(p => !p.left && p.id !== meId && p.connected).flatMap(p => {
+          const current = room.demo && p.bot ? room.findings.find(f => f.playerId === p.id)?.view.position : position(p.id);
+          return current ? [current] : [];
+        });
+        const value = { stepId: room.stepId, band: proximityBand(position(meId), others) };
+        const key = JSON.stringify(value);
+        if (key !== lastProximity) { lastProximity = key; onProximity(value); }
+      } catch { /* Presence is temporary and never blocks the game. */ }
+    };
     const emit = () => {
       if (disposed) return;
       try {
@@ -77,11 +120,14 @@ export const mockApi: SessionApi = {
         lastRevision = room.revision;
         onState(snapshot(room, identity(id)));
         onConnection('connected');
+        emitProximity();
       } catch (error) { onConnection('offline'); onError((error as Error).message); }
     };
     const changed = (event: Event) => {
       if (event instanceof StorageEvent ? event.key === roomKey(id) : (event as CustomEvent).detail === id) emit();
+      if (event instanceof StorageEvent && event.key?.startsWith(`sls:presence:${id}:`)) emitProximity();
     };
+    const presenceChanged = (event: Event) => { if ((event as CustomEvent).detail === id) emitProximity(); };
     const maintain = () => update(id, room => {
       const now = Date.now();
       const player = room.players.find(p => p.id === identity(id) && !p.left);
@@ -92,15 +138,20 @@ export const mockApi: SessionApi = {
     }).catch(error => { if (!disposed) onError((error as Error).message); });
     window.addEventListener('storage', changed);
     window.addEventListener('sls:changed', changed);
+    window.addEventListener('sls:presence', presenceChanged);
     const timer = window.setInterval(maintain, 1500);
+    const proximityTimer = window.setInterval(emitProximity, 1000);
     onConnection('connecting');
     emit();
     void maintain();
     return () => {
       disposed = true;
       clearInterval(timer);
+      clearInterval(proximityTimer);
+      localStorage.removeItem(presenceKey(id, subscriberId));
       window.removeEventListener('storage', changed);
       window.removeEventListener('sls:changed', changed);
+      window.removeEventListener('sls:presence', presenceChanged);
     };
   },
 };

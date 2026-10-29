@@ -5,6 +5,7 @@ use uuid::Uuid;
 
 mod error;
 mod manager;
+mod proximity;
 mod state;
 
 pub use error::{Result, SessionError};
@@ -36,6 +37,8 @@ struct Session {
     id: String,
     phase: Phase,
     duration_sec: u64,
+    settings: RoomSettings,
+    presence: HashMap<Uuid, proximity::Presence>,
     players: HashMap<Uuid, Player>,
     categories: HashMap<Uuid, Category>,
     // Explicit insertion order makes review independent of HashMap iteration.
@@ -62,6 +65,8 @@ impl Session {
             id: new_room_code(),
             phase: Phase::Lobby,
             duration_sec,
+            settings: RoomSettings::default(),
+            presence: HashMap::new(),
             players: HashMap::new(),
             categories: HashMap::new(),
             player_order: Vec::new(),
@@ -94,6 +99,7 @@ impl Session {
     }
 
     fn new_step(&mut self, phase: Phase) {
+        self.presence.clear();
         self.phase = phase;
         self.step_id = Uuid::new_v4();
         for player in self.players.values_mut() {
@@ -155,6 +161,8 @@ impl Session {
         player.left = true;
         player.is_ready = false;
         player.connections.clear();
+        self.presence
+            .retain(|_, presence| presence.player_id != player_id);
         self.votes.remove(&player_id);
         self.update_inactivity(now);
         if matches!(self.phase, Phase::Lobby | Phase::Categories) {
@@ -190,6 +198,7 @@ impl Session {
             ))?;
         // An old connection cannot disconnect a newer socket for the same player.
         player.connections.remove(&connection_id);
+        self.presence.remove(&connection_id);
         self.update_inactivity(now);
         Ok(())
     }
@@ -513,6 +522,7 @@ impl Session {
             phase: self.phase,
             me_id: player_id,
             demo: false,
+            settings: self.settings,
             duration_seconds: self.duration_sec,
             server_time: now.timestamp_millis(),
             search_ends_at: self.search_ends_at,

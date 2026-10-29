@@ -1,5 +1,7 @@
 import type { Action, SessionApi, SessionState } from './types';
 
+const sockets = new Map<string, WebSocket>();
+
 async function request<T>(path: string, method = 'GET', body?: unknown): Promise<T> {
   const response = await fetch(`/api${path}`, {
     method, credentials: 'same-origin',
@@ -32,16 +34,20 @@ function actionRequest(id: string, action: Action) {
 }
 
 export const httpApi: SessionApi = {
-  async create(name, durationSeconds, demo) {
+  async create(name, durationSeconds, demo, settings = { proximityEnabled: false }) {
     if (demo) throw new Error('Solo demos are available only in mock mode.');
-    const { id } = await request<{ id: string }>('/sessions', 'POST', { name, durationSeconds });
+    const { id } = await request<{ id: string }>('/sessions', 'POST', { name, durationSeconds, settings });
     return id;
   },
   async join(id, name) { await request(`/sessions/${encodeURIComponent(id)}/join`, 'POST', { name }); },
   get(id) { return request<SessionState>(`/sessions/${encodeURIComponent(id)}`); },
   async send(id, action) { await actionRequest(id, action); },
   async leave(id) { await request(`/sessions/${encodeURIComponent(id)}/leave`, 'POST'); },
-  subscribe(id, onState, onConnection, onError) {
+  reportPosition(id, report) {
+    const socket = sockets.get(id);
+    if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'position', ...report }));
+  },
+  subscribe(id, onState, onConnection, onError, onProximity) {
     let disposed = false;
     let socket: WebSocket | undefined;
     let retry: ReturnType<typeof setTimeout>;
@@ -63,10 +69,22 @@ export const httpApi: SessionApi = {
       url.protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
       const current = new WebSocket(url);
       socket = current;
+      sockets.set(id, current);
       current.onopen = () => { attempt = 0; onConnection('connected'); void refresh(); };
-      current.onmessage = () => { void refresh(); };
+      current.onmessage = event => {
+        if (disposed || current !== socket) return;
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === 'proximity') {
+            if (typeof message.stepId === 'string' && ['inactive', 'quiet', 'nearby', 'close'].includes(message.band)) onProximity?.({ stepId: message.stepId, band: message.band });
+            return;
+          }
+        } catch { /* Other notifications retain the existing snapshot resync behavior. */ }
+        void refresh();
+      };
       current.onerror = () => current.close();
       current.onclose = () => {
+        if (sockets.get(id) === current) sockets.delete(id);
         if (disposed) return;
         onConnection('reconnecting');
         retry = setTimeout(connect, Math.min(1000 * 2 ** attempt++, 15000));
@@ -74,6 +92,6 @@ export const httpApi: SessionApi = {
     };
     void refresh();
     connect();
-    return () => { disposed = true; clearTimeout(retry); socket?.close(); };
+    return () => { disposed = true; clearTimeout(retry); if (sockets.get(id) === socket) sockets.delete(id); socket?.close(); };
   },
 };

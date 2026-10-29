@@ -12,7 +12,7 @@ interface PanoramaUpdate {
   zoom?: number;
 }
 
-test.beforeEach(async ({ page }) => {
+async function mockMaps(page: Page) {
   // Exercise the live-map component without a Maps key or network requests to Google.
   await page.route('**/src/lib/maps/loader.ts*', route => route.fulfill({
     contentType: 'application/javascript',
@@ -89,7 +89,9 @@ test.beforeEach(async ({ page }) => {
       },
     } } });
   });
-});
+}
+
+test.beforeEach(async ({ page }) => { await mockMaps(page); });
 
 async function startSearch(page: Page, navigate = true) {
   if (navigate) await page.goto('/');
@@ -134,6 +136,7 @@ async function endSearch(page: Page, addEmptyCategory = false) {
 
 test('saving follows late Street View positions, navigation, and visibility', async ({ page }) => {
   await startSearch(page);
+  await expect(page.getByRole('status', { name: 'Neighbourhood radio' })).toHaveCount(0);
 
   const save = page.getByRole('button', { name: /Save view/ });
   const findings = () => page.evaluate(() => {
@@ -176,6 +179,58 @@ test('saving follows late Street View positions, navigation, and visibility', as
   await expect(save).toBeEnabled();
   await page.getByRole('button', { name: 'Back to map' }).click();
   await expect(save).toBeDisabled();
+});
+
+test('optional radio tracks peers within 5 km, very close, map exit, and viewport framing', async ({ page, context }) => {
+  await page.goto('/');
+  const option = page.getByRole('checkbox', { name: /Neighbourhood radio/ });
+  await expect(option).not.toBeChecked();
+  await option.check();
+  await page.getByLabel('Your spotter name').fill('Ada');
+  await page.locator('form').getByRole('button', { name: 'Create room', exact: true }).click();
+  await expect(page.getByText('NEIGHBOURHOOD RADIO ON · 5 KM')).toBeVisible();
+  const other = await context.newPage();
+  await mockMaps(other);
+  await other.goto(page.url());
+  await other.getByLabel('Your spotter name').fill('Linus');
+  await other.locator('form').getByRole('button', { name: 'Join room', exact: true }).click();
+  await expect(page.getByText('Linus', { exact: true })).toBeVisible();
+  for (const peer of [page, other]) await peer.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  await page.getByLabel('New category').fill('A blue door');
+  await page.getByRole('button', { name: 'Add category', exact: true }).click();
+  for (const peer of [page, other]) await peer.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  const radio = (peer: Page) => peer.getByRole('status', { name: 'Neighbourhood radio' });
+  await expect(radio(page)).toContainText('Pick a street');
+  await expect(radio(other)).toContainText('Pick a street');
+  await update(page, { event: 'visible_changed', visible: true, position: { lat: 0, lng: 0 } });
+  await update(other, { event: 'visible_changed', visible: true, position: { lat: 0, lng: 0.044 } });
+  await expect(radio(page)).toContainText('Someone nearby');
+  await expect(radio(other)).toContainText('Someone nearby');
+  for (const viewport of [{ width: 1280, height: 720 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    await expect.poll(() => page.evaluate(() => {
+      const heading = document.querySelector('.phase-heading h1')!.getBoundingClientRect();
+      const radio = document.querySelector('.field-radio')!.getBoundingClientRect();
+      const clock = document.querySelector('.search-clock')!.getBoundingClientRect();
+      const frame = document.querySelector('.view-frame')!.getBoundingClientRect();
+      return heading.right + 8 <= radio.left && radio.right + 8 <= clock.left && clock.right <= innerWidth && Math.abs(frame.width / frame.height - 1.6) < .02 && document.documentElement.scrollHeight <= innerHeight;
+    })).toBe(true);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.locator('.phase-heading').screenshot({ path: 'test-results/neighbourhood-radio.png' });
+  await update(other, { event: 'position_changed', position: { lat: 0, lng: 0.046 } });
+  await expect(radio(page)).toContainText('All quiet out there');
+  await expect(radio(other)).toContainText('All quiet out there');
+  await update(other, { event: 'position_changed', position: { lat: 0, lng: 0.001 } });
+  await expect(radio(page)).toContainText('Very close!');
+  await expect(radio(other)).toContainText('Very close!');
+  await other.getByRole('button', { name: 'Back to map' }).click();
+  await expect(radio(page)).toContainText('All quiet out there');
+  await expect(radio(other)).toContainText('Pick a street');
+  expect(await stats(page)).toMatchObject({ maps: 1, panoramas: 1 });
+  expect(await stats(other)).toMatchObject({ maps: 1, panoramas: 1 });
+  const state = await page.evaluate(() => JSON.parse(localStorage.getItem(`sls:room:${location.hash.split('/').at(-1)}`)!));
+  expect(JSON.stringify(state)).not.toContain('position');
 });
 
 test('one map and panorama serve search, empty categories, candidate changes, and all review items', async ({ page }) => {
