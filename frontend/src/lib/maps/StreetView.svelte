@@ -1,9 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { getContext, onMount } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Scene from '../components/Scene.svelte';
   import type { Viewpoint } from '../api/types';
   import { loadMaps, mapsConfigured } from './loader';
+  import { MapsSession, mapsSessionKey } from './session';
 
   export let explore = false;
   export let demo = false;
@@ -20,6 +21,8 @@
   let initialized = false;
   let applied = '';
   let lifecycle = 0;
+  const unavailable = 'This Street View panorama is no longer available.';
+  const maps = getContext<MapsSession>(mapsSessionKey);
   const illustrated = () => demo || view?.demoScene !== undefined;
 
   function demoChange(next: number) {
@@ -31,11 +34,13 @@
     const key = JSON.stringify(view);
     if (key !== applied) {
       applied = key;
-      loading = true;
-      error = '';
-      panorama.setPano(view.panoramaId);
+      const samePanorama = panorama.getPano() === view.panoramaId;
+      error = samePanorama && panorama.getStatus() === google.maps.StreetViewStatus.ZERO_RESULTS ? unavailable : '';
+      loading = !error && (!samePanorama || panorama.getStatus() !== google.maps.StreetViewStatus.OK);
+      if (!samePanorama) panorama.setPano(view.panoramaId);
       panorama.setPov({ heading: view.heading, pitch: view.pitch });
       panorama.setZoom(view.zoom);
+      panorama.setVisible(true);
     }
   }
 
@@ -43,6 +48,8 @@
     const generation = ++lifecycle;
     let disposed = false;
     let observer: ResizeObserver | undefined;
+    let canvas: HTMLDivElement | undefined;
+    const listeners: google.maps.MapsEventListener[] = [];
     const lockInteraction = (event: Event) => {
       if (explore || (event.target instanceof Element && event.target.closest('a'))) return;
       if (event instanceof KeyboardEvent && (event.key === 'Tab' || event.key === 'Escape' || event.ctrlKey || event.metaKey || event.altKey)) return;
@@ -62,29 +69,18 @@
     } else {
       void loadMaps().then(() => {
         if (disposed || generation !== lifecycle) return;
-        if (explore) {
-          map = new google.maps.Map(element, {
-            center: { lat: 52.52, lng: 13.405 }, zoom: 14,
-            mapTypeControl: true,
-            mapTypeControlOptions: {
-              mapTypeIds: [google.maps.MapTypeId.ROADMAP, google.maps.MapTypeId.SATELLITE],
-              style: google.maps.MapTypeControlStyle.HORIZONTAL_BAR,
-              position: google.maps.ControlPosition.TOP_RIGHT,
-            },
-            fullscreenControl: false,
-            streetViewControl: true, clickableIcons: false,
-          });
-          panorama = map.getStreetView();
-          panorama.setOptions({ addressControl: false, fullscreenControl: false, motionTracking: false, motionTrackingControl: false });
-          loading = false;
-        } else {
-          panorama = new google.maps.StreetViewPanorama(element, {
-            pano: view?.panoramaId, pov: view ? { heading: view.heading, pitch: view.pitch } : undefined,
-            zoom: view?.zoom, visible: true,
-            disableDefaultUI: true, clickToGo: false, linksControl: false,
-            scrollwheel: false, showRoadLabels: false, motionTracking: false, motionTrackingControl: false,
-          });
-        }
+        const viewer = maps.get(explore);
+        canvas = viewer.element;
+        element.append(canvas);
+        map = viewer.map;
+        panorama = viewer.panorama;
+        viewer.mapElement.hidden = !explore;
+        panorama.setOptions({
+          addressControl: false, fullscreenControl: false, motionTracking: false, motionTrackingControl: false,
+          disableDefaultUI: !explore, clickToGo: explore, linksControl: explore,
+          scrollwheel: explore, showRoadLabels: explore, enableCloseButton: explore,
+        });
+        if (explore) loading = false;
         const changed = () => {
           if (!panorama || disposed) return;
           inStreet = panorama.getVisible();
@@ -99,17 +95,19 @@
           }
         };
         // Position can settle after the pano/status events or change without a new pano ID.
-        ['pano_changed', 'position_changed', 'pov_changed', 'zoom_changed', 'visible_changed'].forEach(event => panorama!.addListener(event, changed));
-        panorama.addListener('status_changed', () => {
+        ['pano_changed', 'position_changed', 'pov_changed', 'zoom_changed', 'visible_changed'].forEach(event => listeners.push(panorama!.addListener(event, changed)));
+        listeners.push(panorama.addListener('status_changed', () => {
           if (panorama?.getStatus() === google.maps.StreetViewStatus.ZERO_RESULTS) {
-            error = 'This Street View panorama is no longer available.'; loading = false; onview(null);
+            error = unavailable; loading = false; onview(null);
           } else if (panorama?.getStatus() === google.maps.StreetViewStatus.OK) { error = ''; changed(); }
-        });
+        }));
         observer = new ResizeObserver(() => {
           if (map) google.maps.event.trigger(map, 'resize');
           if (panorama) google.maps.event.trigger(panorama, 'resize');
         });
         observer.observe(element);
+        if (map) google.maps.event.trigger(map, 'resize');
+        google.maps.event.trigger(panorama, 'resize');
         initialized = true;
         changed();
       }).catch(cause => { if (!disposed) { error = (cause as Error).message; loading = false; } });
@@ -121,8 +119,9 @@
       observer?.disconnect();
       if (element) lockedEvents.forEach(name => element.removeEventListener(name, lockInteraction, true));
       window.removeEventListener('sls:maps-auth-error', authError);
-      if (panorama) { google.maps.event.clearInstanceListeners(panorama); panorama.setVisible(false); panorama.unbindAll(); }
-      if (map) { google.maps.event.clearInstanceListeners(map); map.unbindAll(); }
+      listeners.forEach(listener => listener.remove());
+      panorama?.setVisible(false);
+      canvas?.remove();
     };
   });
 </script>

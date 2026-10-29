@@ -14,6 +14,7 @@
   import Selection from './screens/Selection.svelte';
   import Review from './screens/Review.svelte';
   import Results from './screens/Results.svelte';
+  import MapsSession from './lib/maps/MapsSession.svelte';
 
   let session = $state<SessionState | null>(null);
   let roomCode = $state('');
@@ -133,7 +134,7 @@
 <div id="main-content" tabindex="-1">
 {#if loading}<main class="loading-page"><span class="spinner"></span><h2>Finding your people…</h2></main>
 {:else if !session}<Home {busy} {roomCode} oncreate={(name, duration, demo) => enter(name, duration, demo)} onjoin={(code, name) => enter(name, 600, false, code)}/>
-{:else}<main class="game-main phase-{session.phase}">
+{:else}{#key `${session.id}:${session.meId}`}<MapsSession><main class="game-main phase-{session.phase}">
   {#if session.phase === 'lobby'}<Lobby {session} oncopy={copyInvite}/>
   {:else if session.phase === 'categories'}<Categories {session} {busy} onaction={act}/>
   {:else if session.phase === 'searching'}<Search {session} {busy} onaction={act}/>
@@ -141,7 +142,7 @@
   {:else if session.phase === 'review' && session.review}<Review {session} {busy} onaction={act}/>
   {:else if session.phase === 'finished'}<Results {session} onhome={() => leaveDialog.showModal()}/>{/if}
   {#if !['searching', 'finished'].includes(session.phase)}<ReadyBar {session} {busy} disabled={!canReady} next={nextLabel} onready={() => session && act({ type: 'ready', stepId: session.stepId, ready: !me?.ready })}/>{/if}
-</main>{/if}
+</main></MapsSession>{/key}{/if}
 </div>
 </div>
 

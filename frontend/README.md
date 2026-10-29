@@ -42,6 +42,8 @@ Ordinary rooms load Google Maps directly. Use the **Map / Satellite** control to
 
 Saved viewpoints preserve panorama ID, position, heading, pitch, and zoom. Search, selection, and review use a 16:10 viewport. Selection/review views are locked to the saved framing. Panorama availability can change; unavailable views show an explanatory message.
 
+Each player keeps one map and one panorama alive for the current match in their browser tab. Screens move the same canvas between exploration, selection, and review, updating the panorama and camera instead of constructing another viewer per finding. Empty categories and illustrated scenes do not discard these objects. Leaving the room or changing rooms/player identity releases them; refreshing the page creates new instances. A player resuming directly into selection/review only creates a panorama. This avoids repeated instance loads counted by [Google Maps billing](https://developers.google.com/maps/faq#usage_maploads); imagery still loads as the player navigates.
+
 ## Two development modes
 
 ### Mock mode (default)
