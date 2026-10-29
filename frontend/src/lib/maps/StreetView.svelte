@@ -98,7 +98,8 @@
             onview(inStreet && position ? { panoramaId: panorama.getPano(), position: position.toJSON(), ...panorama.getPov(), zoom: panorama.getZoom() } : null);
           }
         };
-        ['pano_changed', 'pov_changed', 'zoom_changed', 'visible_changed'].forEach(event => panorama!.addListener(event, changed));
+        // Position can settle after the pano/status events or change without a new pano ID.
+        ['pano_changed', 'position_changed', 'pov_changed', 'zoom_changed', 'visible_changed'].forEach(event => panorama!.addListener(event, changed));
         panorama.addListener('status_changed', () => {
           if (panorama?.getStatus() === google.maps.StreetViewStatus.ZERO_RESULTS) {
             error = 'This Street View panorama is no longer available.'; loading = false; onview(null);
