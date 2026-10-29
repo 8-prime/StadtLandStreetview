@@ -114,14 +114,13 @@ fn category_edits_and_setup_membership_changes_invalidate_agreement() {
 }
 
 #[test]
-fn deadline_is_shared_and_readiness_cannot_shorten_searching() {
+fn deadline_ends_searching_without_unanimous_readiness() {
     let (mut session, players, categories) = searching(2, 1);
     assert_eq!(session.search_ends_at, Some(61000));
-    assert!(
-        session
-            .ready(players[0], session.step_id, true, at(2000))
-            .is_err()
-    );
+    session
+        .ready(players[0], session.step_id, true, at(2000))
+        .unwrap();
+    assert_eq!(session.phase, Phase::Searching);
     assert!(!session.tick(at(60999)));
     session
         .add_finding(players[0], categories[0], view(), at(60999))
@@ -129,6 +128,7 @@ fn deadline_is_shared_and_readiness_cannot_shorten_searching() {
     let step = session.step_id;
     assert!(session.tick(at(61000)));
     assert_eq!(session.phase, Phase::Selection);
+    assert!(session.players.values().all(|player| !player.is_ready));
     assert_ne!(session.step_id, step);
     assert!(!session.tick(at(62000)));
     assert!(
@@ -141,6 +141,63 @@ fn deadline_is_shared_and_readiness_cannot_shorten_searching() {
             .add_category(players[0], "Late category".into())
             .is_err()
     );
+}
+
+#[test]
+fn unanimous_search_readiness_is_reversible_and_opens_selection_once() {
+    let (mut session, players, categories) = searching(2, 1);
+    let finding = session
+        .add_finding(players[0], categories[0], view(), at(2000))
+        .unwrap();
+    let step = session.step_id;
+    session.ready(players[0], step, true, at(3000)).unwrap();
+    session.ready(players[0], step, true, at(3000)).unwrap();
+    assert_eq!(session.phase, Phase::Searching);
+    assert_eq!(session.search_ends_at, Some(61000));
+    session.ready(players[0], step, false, at(4000)).unwrap();
+    session.ready(players[1], step, true, at(5000)).unwrap();
+    assert_eq!(session.phase, Phase::Searching);
+    // A player with no findings may still finish searching.
+    session.ready(players[0], step, true, at(6000)).unwrap();
+    assert_eq!(session.phase, Phase::Selection);
+    assert_ne!(session.step_id, step);
+    assert!(session.players.values().all(|player| !player.is_ready));
+    assert_eq!(
+        session.players[&players[0]].selections[&categories[0]],
+        finding
+    );
+    assert!(matches!(
+        session.ready(players[0], step, true, at(6000)),
+        Err(SessionError::Conflict(_))
+    ));
+    assert!(
+        session
+            .add_finding(players[0], categories[0], view(), at(7000))
+            .is_err()
+    );
+    assert!(!session.tick(at(61000)));
+    assert_eq!(session.phase, Phase::Selection);
+}
+
+#[test]
+fn changing_search_evidence_clears_readiness_and_leaving_rechecks_completion() {
+    let (mut session, players, categories) = searching(2, 1);
+    let step = session.step_id;
+    session.ready(players[0], step, true, at(2000)).unwrap();
+    let finding = session
+        .add_finding(players[0], categories[0], view(), at(3000))
+        .unwrap();
+    assert!(!session.players[&players[0]].is_ready);
+    session.ready(players[0], step, true, at(4000)).unwrap();
+    session.delete_finding(players[0], finding).unwrap();
+    assert!(!session.players[&players[0]].is_ready);
+    session.ready(players[0], step, true, at(5000)).unwrap();
+    // An unready disconnected member still counts until they explicitly leave.
+    assert!(session.players[&players[1]].connections.is_empty());
+    assert_eq!(session.phase, Phase::Searching);
+    session.leave(players[1], at(6000)).unwrap();
+    assert_eq!(session.phase, Phase::Selection);
+    assert!(session.players.values().all(|player| !player.is_ready));
 }
 
 #[test]
@@ -738,6 +795,63 @@ async fn concurrent_ready_requests_advance_once_without_losing_updates() {
             .categories
             .is_empty()
     );
+}
+
+#[tokio::test(start_paused = true)]
+async fn concurrent_search_readiness_publishes_completion_and_the_old_timer_is_a_noop() {
+    let manager = SessionManager::new();
+    let created = manager.start_session("Alex".into(), 60).await.unwrap();
+    let id = &created.session_id;
+    let other = manager.join_session(id, "Mika".into(), None).await.unwrap();
+    let players = [created.player_id, other];
+    let mut connection = manager.connect(id, created.player_id).await.unwrap();
+    manager_ready_all(&manager, id, &players).await;
+    manager
+        .add_category(id, created.player_id, "Door".into())
+        .await
+        .unwrap();
+    manager_ready_all(&manager, id, &players).await;
+    let before = manager.get_session(id, created.player_id).await.unwrap();
+    assert_eq!(before.phase, Phase::Searching);
+    drain(&mut connection);
+    let (first, second) = tokio::join!(
+        manager.ready(id, created.player_id, before.step_id, true),
+        manager.ready(id, other, before.step_id, true),
+    );
+    first.unwrap();
+    second.unwrap();
+    assert_eq!(
+        connection.updates.try_recv().unwrap(),
+        SessionEvent::StateChanged {
+            revision: before.revision + 1
+        }
+    );
+    assert_eq!(
+        connection.updates.try_recv().unwrap(),
+        SessionEvent::StateChanged {
+            revision: before.revision + 2
+        }
+    );
+    let after = manager.get_session(id, created.player_id).await.unwrap();
+    assert_eq!(after.phase, Phase::Selection);
+    assert_ne!(after.step_id, before.step_id);
+    assert!(after.players.iter().all(|player| !player.ready));
+    assert!(
+        manager
+            .ready(id, other, before.step_id, true)
+            .await
+            .is_err()
+    );
+    tokio::time::advance(Duration::from_secs(61)).await;
+    tokio::task::yield_now().await;
+    assert!(matches!(
+        connection.updates.try_recv(),
+        Err(TryRecvError::Empty)
+    ));
+    let unchanged = manager.get_session(id, created.player_id).await.unwrap();
+    assert_eq!(unchanged.phase, Phase::Selection);
+    assert_eq!(unchanged.step_id, after.step_id);
+    assert_eq!(unchanged.revision, after.revision);
 }
 
 #[tokio::test(start_paused = true)]

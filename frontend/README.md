@@ -40,6 +40,8 @@ Enable the Maps JavaScript API and billing in your Google Cloud project. Restric
 
 Ordinary rooms load Google Maps directly. Use the **Map / Satellite** control to switch the overhead map between roads and satellite imagery. Drag Pegman onto a covered street, frame the scene, choose a category, and save. Without a key, the live map shows configuration instructions and saving is disabled. A map-loading or authentication failure is shown in the map panel.
 
+The search readiness bar lets players mark **Done searching** and undo while waiting. Searching ends when every active player is ready or the shared timer expires, then everyone chooses their final evidence with readiness reset. Saving or changing evidence clears that player's readiness.
+
 Saved viewpoints preserve panorama ID, position, heading, pitch, and zoom. Search, selection, and review use a 16:10 viewport. Selection/review views are locked to the saved framing. Panorama availability can change; unavailable views show an explanatory message.
 
 Each player keeps one map and one panorama alive for the current match in their browser tab. Screens move the same canvas between exploration, selection, and review, updating the panorama and camera instead of constructing another viewer per finding. Empty categories and illustrated scenes do not discard these objects. Leaving the room or changing rooms/player identity releases them; refreshing the page creates new instances. A player resuming directly into selection/review only creates a panorama. This avoids repeated instance loads counted by [Google Maps billing](https://developers.google.com/maps/faq#usage_maploads); imagery still loads as the player navigates.
@@ -48,7 +50,7 @@ Each player keeps one map and one panorama alive for the current match in their 
 
 ### Mock mode (default)
 
-- **Try the solo demo** opens a round with two explicitly simulated peers and locally illustrated scenes. It never loads Google Maps. A labeled demo-only shortcut ends searching early.
+- **Try the solo demo** opens a round with two explicitly simulated peers and locally illustrated scenes. It never loads Google Maps. Simulated peers mark ready during searching too, so **Done searching** ends the search through the same readiness flow as regular rooms.
 - **Start a room** creates a local room. Copy its link into a separate tab in the **same browser profile and origin** to join as another player. Regular rooms use real Maps when configured.
 - Mock rooms are serialized in `localStorage` and identities in per-tab `sessionStorage`. Refreshing retains the identity; closing a tab ends that tab's credential lifetime. Some browser “duplicate tab” operations copy session storage, so use a fresh tab and paste the room URL to create a separate peer.
 - Storage events synchronize tabs; Web Locks serialize mock mutations where supported. Presence updates have a 45-second disconnect threshold. Disconnected peers still count toward readiness. Explicit leave removes that requirement.

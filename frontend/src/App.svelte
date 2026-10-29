@@ -27,8 +27,8 @@
   let rulesPage = $state(0);
   const rules = [
     { title: 'Make a list.', text: 'Collect things to find with your crew. A dog walker? A questionable parking job? Everyone marks ready to start the same scavenger hunt.', mood: 'idle' as const },
-    { title: 'Hit the streets.', text: 'Explore Google Maps without a search bar. Save Street View evidence for any category. One timer covers the whole list, so spend it how you like.', mood: 'searching' as const },
-    { title: 'Pick your evidence.', text: 'When time expires, choose one saved view per category. Your first is selected automatically. No finding means no submission. Mark ready when you’re happy.', mood: 'ready' as const },
+    { title: 'Hit the streets.', text: 'Explore Google Maps without a search bar. Save Street View evidence for any category. One timer covers the whole list. Done searching? Mark ready — when everyone is done, searching ends early.', mood: 'searching' as const },
+    { title: 'Pick your evidence.', text: 'When time expires or everyone finishes searching, choose one saved view per category. Your first is selected automatically. No finding means no submission. Mark ready when you’re happy.', mood: 'ready' as const },
     { title: 'Judge the finds.', text: 'Everyone sees the same locked view. Your vote counts as ready; only the owner marks ready. Once everyone responds, the next finding opens automatically. More matches than rejections earns a point. Most points wins.', mood: 'winner' as const },
   ];
   let leaveDialog: HTMLDialogElement;
@@ -40,7 +40,7 @@
   let phaseIndex = $derived(!session || session.phase === 'lobby' ? -1 : session.phase === 'categories' ? 0 : ['searching', 'selection'].includes(session.phase) ? 1 : 2);
   let me = $derived(session?.players.find(p => p.id === session?.meId));
   let canReady = $derived(Boolean(session && connection === 'connected' && !(session.phase === 'categories' && !session.categories.length) && !(session.phase === 'review' && session.review?.finding.playerId !== session.meId)));
-  let nextLabel = $derived(session?.phase === 'lobby' ? 'collect categories' : session?.phase === 'categories' ? 'start exploring' : session?.phase === 'selection' ? 'start the review' : session?.review && session.review.index + 1 === session.review.total ? 'see the final scores' : 'see the next finding');
+  let nextLabel = $derived(session?.phase === 'lobby' ? 'collect categories' : session?.phase === 'categories' ? 'start exploring' : session?.phase === 'searching' ? 'end searching and pick our evidence' : session?.phase === 'selection' ? 'start the review' : session?.review && session.review.index + 1 === session.review.total ? 'see the final scores' : 'see the next finding');
 
   function toast(message: string) {
     notice = message;
@@ -141,7 +141,7 @@
   {:else if session.phase === 'selection'}<Selection {session} {busy} onaction={act}/>
   {:else if session.phase === 'review' && session.review}<Review {session} {busy} onaction={act}/>
   {:else if session.phase === 'finished'}<Results {session} onhome={() => leaveDialog.showModal()}/>{/if}
-  {#if !['searching', 'finished'].includes(session.phase)}<ReadyBar {session} {busy} disabled={!canReady} next={nextLabel} onready={() => session && act({ type: 'ready', stepId: session.stepId, ready: !me?.ready })}/>{/if}
+  {#if session.phase !== 'finished'}<ReadyBar {session} {busy} disabled={!canReady} next={nextLabel} onready={() => session && act({ type: 'ready', stepId: session.stepId, ready: !me?.ready })}/>{/if}
 </main></MapsSession>{/key}{/if}
 </div>
 </div>

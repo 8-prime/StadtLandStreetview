@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, createRoom, currentFinding, demoView, reconcile, snapshot, tick, type Room } from './engine';
+import { applyAction, createRoom, currentFinding, demoView, reconcile, simulatePeers, snapshot, tick, type Room } from './engine';
 
 function room() {
   const r = createRoom('TEST12', 'Alex', 'alex', 60, true);
@@ -46,13 +46,68 @@ describe('peer progression and findings', () => {
     expect(() => applyAction(r, 'alex', { type: 'ready', stepId: r.stepId, ready: true })).toThrow('category');
   });
 
-  it('expires on one overall deadline, rejects late findings, and cannot end early via readiness', () => {
+  it('expires on one overall deadline without unanimous readiness and rejects late findings', () => {
     const r = searching();
-    expect(() => applyAction(r, 'alex', { type: 'ready', stepId: r.stepId, ready: true }, 2000)).toThrow('not used');
+    applyAction(r, 'alex', { type: 'ready', stepId: r.stepId, ready: true }, 2000);
+    expect(r.phase).toBe('searching');
     expect(tick(r, 60999)).toBe(false);
     expect(tick(r, 61000)).toBe(true);
     expect(r.phase).toBe('selection');
+    expect(r.players.every(p => !p.ready)).toBe(true);
     expect(() => applyAction(r, 'alex', { type: 'save-finding', categoryId: r.categories[0].id, view: demoView() }, 62000)).toThrow('over');
+  });
+
+  it('allows undo during searching and opens selection exactly once when every peer is done', () => {
+    const r = searching();
+    const stepId = r.stepId;
+    applyAction(r, 'alex', { type: 'ready', stepId, ready: true }, 2000);
+    applyAction(r, 'alex', { type: 'ready', stepId, ready: true }, 2000);
+    expect(r.phase).toBe('searching');
+    expect(r.searchEndsAt).toBe(61000);
+    applyAction(r, 'alex', { type: 'ready', stepId, ready: false }, 3000);
+    for (const player of r.players.slice(1)) applyAction(r, player.id, { type: 'ready', stepId, ready: true }, 4000);
+    expect(r.phase).toBe('searching');
+    // Alex has no findings; completing every category is optional.
+    applyAction(r, 'alex', { type: 'ready', stepId, ready: true }, 5000);
+    expect(r.phase).toBe('selection');
+    expect(r.stepId).not.toBe(stepId);
+    expect(r.players.every(p => !p.ready)).toBe(true);
+    expect(() => applyAction(r, 'alex', { type: 'ready', stepId, ready: true }, 6000)).toThrow('moved on');
+    expect(() => applyAction(r, 'alex', { type: 'save-finding', categoryId: r.categories[0].id, view: demoView() }, 6000)).toThrow('over');
+    expect(tick(r, 61000)).toBe(false);
+    expect(r.phase).toBe('selection');
+  });
+
+  it('resets search readiness when saving evidence and excludes departures while retaining disconnected peers', () => {
+    const r = searching();
+    const stepId = r.stepId;
+    const categoryId = r.categories[0].id;
+    applyAction(r, 'alex', { type: 'ready', stepId, ready: true }, 2000);
+    applyAction(r, 'alex', { type: 'save-finding', categoryId, view: demoView() }, 3000);
+    expect(r.players[0].ready).toBe(false);
+    applyAction(r, 'alex', { type: 'ready', stepId, ready: true }, 4000);
+    applyAction(r, 'alex', { type: 'delete-finding', findingId: r.findings.find(f => f.playerId === 'alex')!.id }, 5000);
+    expect(r.players[0].ready).toBe(false);
+    r.players[0].ready = r.players[1].ready = true;
+    r.players[2].connected = false;
+    reconcile(r);
+    expect(r.phase).toBe('searching');
+    r.players[2].left = true;
+    reconcile(r);
+    expect(r.phase).toBe('selection');
+    expect(r.players.every(p => !p.ready)).toBe(true);
+  });
+
+  it('lets solo demo players finish searching through the same readiness flow', () => {
+    const r = createRoom('DEMO', 'Alex', 'alex', 60, true);
+    readyAll(r);
+    readyAll(r);
+    expect(simulatePeers(r, 2000)).toBe(true);
+    expect(r.phase).toBe('searching');
+    expect(r.players.filter(p => p.bot).every(p => p.ready)).toBe(true);
+    applyAction(r, 'alex', { type: 'ready', stepId: r.stepId, ready: true }, 3000);
+    expect(r.phase).toBe('selection');
+    expect(r.players.every(p => !p.ready)).toBe(true);
   });
 
   it('defaults to the first candidate, handles missing findings implicitly, and repairs deleted selections', () => {

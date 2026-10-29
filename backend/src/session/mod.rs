@@ -222,6 +222,7 @@ impl Session {
         self.require_phase(&[
             Phase::Lobby,
             Phase::Categories,
+            Phase::Searching,
             Phase::Selection,
             Phase::Review,
         ])?;
@@ -320,6 +321,7 @@ impl Session {
             created_at: now.timestamp_millis(),
         });
         player.selections.entry(category_id).or_insert(id);
+        player.is_ready = false;
         Ok(id)
     }
 
@@ -425,6 +427,7 @@ impl Session {
                     Some(now.timestamp_millis() + self.duration_sec as i64 * 1000);
                 self.new_step(Phase::Searching);
             }
+            Phase::Searching => self.new_step(Phase::Selection),
             Phase::Selection => {
                 // Freeze the selected findings, including submissions of departed players.
                 for category_id in &self.category_order {

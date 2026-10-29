@@ -28,7 +28,6 @@ function actionRequest(id: string, action: Action) {
     case 'delete-finding': return request(`${base}/findings/${encodeURIComponent(action.findingId)}`, 'DELETE');
     case 'select': return request(`${base}/selections/${encodeURIComponent(action.categoryId)}`, 'PUT', { findingId: action.findingId });
     case 'vote': return request(`${base}/review/${encodeURIComponent(action.itemId)}/vote`, 'PUT', { vote: action.vote });
-    case 'demo-end-search': throw new Error('Demo shortcuts are not available on the server.');
   }
 }
 

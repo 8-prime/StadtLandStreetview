@@ -77,7 +77,7 @@ test('solo demo runs through selection and automatic voting progression', async 
   await page.getByRole('button', { name: 'Next demo scene' }).click();
   await page.getByRole('button', { name: /Save view/ }).click();
   await capture(page, 'search');
-  await page.getByRole('button', { name: /Demo: end search/ }).click();
+  await page.getByRole('button', { name: 'Done searching', exact: true }).click();
   await expect(page.getByRole('heading', { name: /your best shot/i })).toBeVisible();
   await expect(page.getByRole('button', { name: /View 1 Your final submission/ })).toHaveAttribute('aria-pressed', 'true');
   await page.getByRole('button', { name: /View 2 Choose this view instead/ }).click();
@@ -138,6 +138,14 @@ test('two peers share readiness, category edits reset agreement, and refresh res
   await expect(page.getByRole('button', { name: /Save view/ })).toBeDisabled();
   await expect(page.getByText('Your window to the world.')).toBeVisible();
   expect((await state(page)).phase).toBe('searching');
+  await page.getByRole('button', { name: 'Done searching', exact: true }).click();
+  await expect(second.getByText('1 of 2 ready')).toBeVisible();
+  expect((await state(page)).phase).toBe('searching');
+  await page.getByRole('button', { name: 'Ready · undo' }).click();
+  await expect(second.getByText('0 of 2 ready')).toBeVisible();
+  await page.getByRole('button', { name: 'Done searching', exact: true }).click();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Ready · undo' })).toBeVisible();
   // Inject camera output through the adapter: no Google key or imagery is needed
   // to verify that two actual UI peers see exactly the same review item.
   for (const peer of [page, second]) {
@@ -149,10 +157,17 @@ test('two peers share readiness, category edits reset agreement, and refresh res
       await api.send(id, { type: 'save-finding', categoryId: session.categories[0].id, view: { panoramaId: 'test-panorama', position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1 } });
     });
   }
-  await page.clock.install();
-  await page.clock.fastForward(62000);
+  // Saving evidence resumes searching and clears the previous "done" vote.
+  await expect(page.getByRole('button', { name: 'Done searching', exact: true })).toBeVisible();
+  await expect(second.getByText('0 of 2 ready')).toBeVisible();
+  await page.getByRole('button', { name: 'Done searching', exact: true }).click();
+  await expect(second.getByText('1 of 2 ready')).toBeVisible();
+  expect((await state(page)).phase).toBe('searching');
+  expect((await state(page)).searchEndsAt).toBeGreaterThan(Date.now());
+  await second.getByRole('button', { name: 'Done searching', exact: true }).click();
   await expect(page.getByRole('heading', { name: /your best shot/i })).toBeVisible();
   await expect(second.getByRole('heading', { name: /your best shot/i })).toBeVisible();
+  await expect(page.getByText('0 of 2 ready')).toBeVisible();
   await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await expect(page.getByText('A moment for your find.')).toBeVisible();
@@ -180,7 +195,6 @@ test('two peers share readiness, category edits reset agreement, and refresh res
   await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   await expect(second.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   expect((await state(page)).results).toHaveLength(2);
-  await page.clock.resume();
   await second.getByRole('button', { name: 'Leave room', exact: true }).click();
   await second.getByRole('dialog').getByRole('button', { name: 'Leave room', exact: true }).click();
   await expect.poll(async () => (await state(page)).players.find((p: { name: string }) => p.name === 'Linus').left).toBe(true);

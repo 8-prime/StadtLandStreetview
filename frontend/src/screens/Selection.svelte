@@ -17,7 +17,7 @@
   $: if (page >= pages) page = pages - 1;
 </script>
 
-<section class="phase-heading"><div><span class="eyebrow">TIME’S UP / PICK YOUR EVIDENCE</span><h1>YOUR <span>BEST SHOT.</span></h1></div><span class="phase-note"><Icon name="check"/> First saved view selected automatically</span></section>
+<section class="phase-heading"><div><span class="eyebrow">SEARCH COMPLETE / PICK YOUR EVIDENCE</span><h1>YOUR <span>BEST SHOT.</span></h1></div><span class="phase-note"><Icon name="check"/> First saved view selected automatically</span></section>
 <div class="selection-layout">
   <CategoryRail {session} selected={categoryId} selection onselect={id => { categoryId = id; page = 0; }}/>
   <section class="selection-detail panel"><div class="selection-title"><h2 title={category?.text}>{category?.text}</h2><span class="pill" class:positive={Boolean(selected)}><Icon name={selected ? 'check' : 'close'} size={14}/>{selected ? 'Final pick' : 'No submission'}</span></div>

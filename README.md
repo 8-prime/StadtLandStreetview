@@ -56,12 +56,13 @@ Each player gets a Google Maps view **without search**, with a **Map / Satellite
 - Players can work on the categories in any order and switch between them freely.
 - A player can save their current Street View as a finding for any category.
 - Players may save multiple candidate findings for the same category during the search.
+- Players can mark **Done searching** and undo while waiting. If every active player is ready, searching ends early; otherwise it ends at the shared deadline. Saving or changing evidence clears that player's readiness.
 
-### Final selection after time runs out
+### Final selection after searching ends
 
-When the search timer expires, exploration and collection end. Before voting begins, players choose which saved finding to keep for each category.
+When the search timer expires or everyone marks done, exploration and collection end. Before voting begins, players choose which saved finding to keep for each category.
 
-Only **one final image per player per category** moves on to review. This selection happens **after the search time is up**, so players do not need to make their final choices while searching.
+Only **one final image per player per category** moves on to review. This selection happens **after searching ends**, so players do not need to make their final choices while searching.
 
 The first saved candidate is selected automatically. Players can change that choice before review. A category with no saved finding automatically has no submission and is skipped for that player.
 
@@ -92,7 +93,7 @@ The initial UI presents tied leaders as joint winners.
 
 ## Peer-based progression
 
-There is no host controlling progression. During setup and final selection, each player can set or unset their readiness for the current step. Once all active members are ready, the game advances and resets readiness. Searching ends automatically at its shared deadline and cannot be shortened by readiness. During review, voters are automatically ready after casting a vote, while the finding's owner confirms readiness separately.
+There is no host controlling progression. During setup, searching, and final selection, each player can set or unset their readiness for the current step. Once all active members are ready, the game advances and resets readiness. Searching also ends automatically at its shared deadline. During review, voters are automatically ready after casting a vote, while the finding's owner confirms readiness separately.
 
 Changing the shared category list resets everyone's readiness. Changing a final selection resets that player's readiness; changing a vote keeps the voter ready. Disconnected players retain their membership and response requirement; explicitly leaving removes that requirement.
 

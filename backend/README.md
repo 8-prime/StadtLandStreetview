@@ -197,7 +197,10 @@ Expiry changes the phase and publishes a notification even if no clients are
 making requests. Every action also checks expiry before applying its rules, so a
 delayed timer cannot admit late findings. Readiness includes disconnected members,
 uses an opaque step ID, and resets at transitions and setup membership/category
-changes. Categories are shared and editable by any active peer during collection.
+changes. During searching, unanimous readiness ends the search early and opens
+selection; the original timer becomes a no-op after this transition. Saving or
+changing evidence clears that player's readiness. Categories are shared and
+editable by any active peer during collection.
 
 Names are trimmed and limited to 1–24 characters, category text to 1–100,
 duration to 60–1200 seconds, and rooms to 12 active players, 12 categories, and

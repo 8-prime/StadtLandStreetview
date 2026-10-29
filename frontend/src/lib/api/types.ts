@@ -76,8 +76,7 @@ export type Action =
   | { type: 'save-finding'; categoryId: string; view: Viewpoint }
   | { type: 'delete-finding'; findingId: string }
   | { type: 'select'; categoryId: string; findingId: string }
-  | { type: 'vote'; itemId: string; vote: Vote }
-  | { type: 'demo-end-search' };
+  | { type: 'vote'; itemId: string; vote: Vote };
 
 export interface SessionApi {
   create(name: string, durationSeconds: number, demo?: boolean): Promise<string>;

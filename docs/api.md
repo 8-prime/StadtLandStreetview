@@ -98,16 +98,16 @@ The client reconnects with exponential backoff (up to 15 seconds) and resynchron
 
 1. All active members ready in the lobby → category collection.
 2. All ready with at least one category → searching. Establish one server deadline.
-3. Deadline reached → final selection. Readiness does **not** shorten searching.
+3. Deadline reached or all active members ready during searching → final selection. Search readiness is reversible until everyone is ready; no findings are required to mark done.
 4. All ready after selection → first review item, or finished if nobody submitted a finding.
 5. All eligible voters have voted and the finding's owner is ready (unless they left) → calculate the result, award any point, and immediately open the next item, or finish after the last item. There is no intermediate result-reveal step.
 
 Reset readiness and assign a new `stepId` at each transition. A category edit or membership change during setup also invalidates readiness and should issue a new `stepId`. Reject stale readiness requests; do not apply them to a newer step. Readiness requests set a value rather than toggling it, making retries idempotent.
 
 - Categories are editable only during collection. The prototype allows any peer to edit.
-- Candidates can be saved only before the search deadline. Removing candidates is allowed during searching and selection.
+- Candidates can be saved only while searching, before the deadline or unanimous early completion. Saving a candidate clears that player's search readiness. Removing candidates is allowed during searching and selection.
 - The first saved candidate is the default selection. Removing the selected candidate selects the next remaining one. Zero candidates implicitly means no submission.
-- Selecting or deleting a candidate during selection clears that player's readiness.
+- Selecting or deleting a candidate clears that player's readiness during searching and selection.
 - Lock final selections when review begins. Build the review queue category-first, then player-first; skip missing submissions.
 - Players cannot vote on their own findings. Casting a vote sets the voter's readiness automatically; only the owner uses the readiness endpoint during review. Reject readiness requests from other players, including attempts to unset readiness independently of a vote.
 - Votes can change until everyone has responded; changing a vote keeps the voter ready. Reject vote requests for a previous item after progression, and clear votes and readiness for the new item.

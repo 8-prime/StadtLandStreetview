@@ -24,5 +24,5 @@
     {/each}
   </div>
   <Pager {page} {pages} label="checklist" onpage={value => page = value}/>
-  <div class="sidebar-tip"><Icon name={selection ? 'check' : 'info'} size={17}/><p>{selection ? 'No finding? No action needed. Pick your favorites, then mark ready.' : 'One timer. Any order. Choose your final views after time is up.'}</p></div>
+  <div class="sidebar-tip"><Icon name={selection ? 'check' : 'info'} size={17}/><p>{selection ? 'No finding? No action needed. Pick your favorites, then mark ready.' : 'One timer. Any order. Choose your final views after searching ends.'}</p></div>
 </aside>

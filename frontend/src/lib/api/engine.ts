@@ -76,6 +76,9 @@ function advance(room: Room, now: number) {
         room.findings.push({ id: uid(), categoryId: c.id, playerId: p.id, view: demoView((i + j + 1) % 3), createdAt: now });
       }));
     }
+  } else if (room.phase === 'searching') {
+    autoSelections(room);
+    newStep(room, 'selection');
   } else if (room.phase === 'selection') {
     autoSelections(room);
     room.queue = room.categories.flatMap(c => room.players.flatMap(p => {
@@ -104,7 +107,7 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
   tick(room, now);
   if (action.type === 'ready') {
     if (room.stepId !== action.stepId) throw new Error('The group has moved on. Please check the current step.');
-    if (room.phase === 'searching' || room.phase === 'finished') throw new Error('Readiness is not used in this phase.');
+    if (room.phase === 'finished') throw new Error('Readiness is not used in this phase.');
     if (action.ready && room.phase === 'categories' && !room.categories.length) throw new Error('Add at least one category first.');
     const finding = currentFinding(room);
     if (room.phase === 'review' && finding?.playerId !== playerId) throw new Error('Cast your vote instead of marking yourself ready.');
@@ -130,6 +133,7 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
     if (candidates.length >= 12) throw new Error('You have 12 candidates here. Remove one before adding another.');
     room.findings.push({ id: uid(), playerId, categoryId: action.categoryId, view: structuredClone(action.view), createdAt: now });
     autoSelections(room);
+    player.ready = false;
   } else if (action.type === 'delete-finding') {
     if (!['searching', 'selection'].includes(room.phase)) throw new Error('Findings are locked.');
     const finding = room.findings.find(f => f.id === action.findingId && f.playerId === playerId);
@@ -148,17 +152,13 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
     if (finding.playerId === playerId) throw new Error('You cannot vote on your own finding.');
     room.votes[playerId] = action.vote;
     player.ready = true;
-  } else if (action.type === 'demo-end-search') {
-    if (!room.demo || room.phase !== 'searching') throw new Error('This shortcut is only available in the solo demo.');
-    room.searchEndsAt = now;
-    tick(room, now);
   }
   advance(room, now);
 }
 
 export function simulatePeers(room: Room, now = Date.now()): boolean {
-  if (!room.demo || room.phase === 'searching' || room.phase === 'finished') return false;
-  const bots = room.players.filter(p => p.bot && !p.ready);
+  if (!room.demo || room.phase === 'finished') return false;
+  const bots = room.players.filter(p => p.bot && !p.left && !p.ready);
   if (!bots.length || (room.phase === 'categories' && !room.categories.length)) return false;
   for (const bot of bots) {
     const finding = currentFinding(room);
