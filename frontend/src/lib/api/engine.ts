@@ -1,5 +1,16 @@
-import { maxDuration, minDuration } from './duration';
-import { defaultSettings, type Action, type Category, type Finding, type Phase, type Player, type ReviewResult, type RoomSettings, type SessionState, type Vote } from './types';
+import { maxDuration, minDuration } from "./duration";
+import {
+  defaultSettings,
+  type Action,
+  type Category,
+  type Finding,
+  type Phase,
+  type Player,
+  type ReviewResult,
+  type RoomSettings,
+  type SessionState,
+  type Vote,
+} from "./types";
 
 type Position = { lat: number; lng: number };
 
@@ -26,48 +37,101 @@ export interface Room {
 export const uid = () => crypto.randomUUID();
 // The local prototype has no country boundaries; the server uses a generated dataset.
 const localStarts: [string, number, number][] = [
-  ['DE', 52.52, 13.405], ['FR', 48.8566, 2.3522], ['GB', 51.5072, -0.1276], ['IT', 41.8933, 12.4829],
-  ['JP', 35.6812, 139.7671], ['US', 40.7128, -74.006], ['BR', -22.9068, -43.1729], ['AU', -33.8688, 151.2093],
-  ['ZA', -33.9249, 18.4241], ['CA', 43.6532, -79.3832], ['MX', 19.4326, -99.1332], ['TH', 13.7563, 100.5018],
+  ["DE", 52.52, 13.405],
+  ["FR", 48.8566, 2.3522],
+  ["GB", 51.5072, -0.1276],
+  ["IT", 41.8933, 12.4829],
+  ["JP", 35.6812, 139.7671],
+  ["US", 40.7128, -74.006],
+  ["BR", -22.9068, -43.1729],
+  ["AU", -33.8688, 151.2093],
+  ["ZA", -33.9249, 18.4241],
+  ["CA", 43.6532, -79.3832],
+  ["MX", 19.4326, -99.1332],
+  ["TH", 13.7563, 100.5018],
 ];
 
-export function randomStarts(count: number, banned: readonly string[] = [], random = Math.random): Position[] {
+export function randomStarts(
+  count: number,
+  banned: readonly string[] = [],
+  random = Math.random,
+): Position[] {
   const pool = localStarts.filter(([country]) => !banned.includes(country));
-  const order = pool.map(start => ({ start, key: random() })).sort((a, b) => a.key - b.key);
+  const order = pool
+    .map((start) => ({ start, key: random() }))
+    .sort((a, b) => a.key - b.key);
   return Array.from({ length: pool.length ? count : 0 }, (_, i) => {
     const [, lat, lng] = order[i % order.length].start;
     return { lat, lng };
   });
 }
 
-export const demoView = (scene = 0) => ({ panoramaId: `demo-${scene}`, position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1, demoScene: scene });
+export const demoView = (scene = 0) => ({
+  panoramaId: `demo-${scene}`,
+  position: { lat: 52.52, lng: 13.405 },
+  heading: 90,
+  pitch: 0,
+  zoom: 1,
+  demoScene: scene,
+});
 
-export function createRoom(id: string, name: string, playerId: string, durationSeconds: number, demo: boolean, settings: RoomSettings = defaultSettings()): Room {
-  const names = demo ? [name, 'Mika', 'Jules'] : [name];
+export function createRoom(
+  id: string,
+  name: string,
+  playerId: string,
+  durationSeconds: number,
+  demo: boolean,
+  settings: RoomSettings = defaultSettings(),
+): Room {
+  const names = demo ? [name, "Mika", "Jules"] : [name];
   return {
-    id, revision: 0, stepId: uid(), phase: 'lobby', demo, durationSeconds, settings,
-    searchEndsAt: null, categories: [], findings: [], selections: {}, queue: [],
-    reviewIndex: 0, votes: {}, results: [],
-    players: names.map((n, i) => ({ id: i === 0 ? playerId : uid(), name: n, ready: false, connected: true, color: i, score: 0, left: false, bot: i > 0, lastSeen: Date.now() })),
+    id,
+    revision: 0,
+    stepId: uid(),
+    phase: "lobby",
+    demo,
+    durationSeconds,
+    settings,
+    searchEndsAt: null,
+    categories: [],
+    findings: [],
+    selections: {},
+    queue: [],
+    reviewIndex: 0,
+    votes: {},
+    results: [],
+    players: names.map((n, i) => ({
+      id: i === 0 ? playerId : uid(),
+      name: n,
+      ready: false,
+      connected: true,
+      color: i,
+      score: 0,
+      left: false,
+      bot: i > 0,
+      lastSeen: Date.now(),
+    })),
   };
 }
 
 function newStep(room: Room, phase: Phase) {
   room.phase = phase;
   room.stepId = uid();
-  room.players.forEach(p => p.ready = false);
+  room.players.forEach((p) => (p.ready = false));
 }
 
 export function currentFinding(room: Room) {
-  return room.findings.find(f => f.id === room.queue[room.reviewIndex]);
+  return room.findings.find((f) => f.id === room.queue[room.reviewIndex]);
 }
 
 function autoSelections(room: Room) {
   for (const player of room.players) {
-    const selected = room.selections[player.id] ??= {};
+    const selected = (room.selections[player.id] ??= {});
     for (const category of room.categories) {
-      const candidates = room.findings.filter(f => f.playerId === player.id && f.categoryId === category.id);
-      if (!candidates.some(f => f.id === selected[category.id])) {
+      const candidates = room.findings.filter(
+        (f) => f.playerId === player.id && f.categoryId === category.id,
+      );
+      if (!candidates.some((f) => f.id === selected[category.id])) {
         delete selected[category.id];
         if (candidates[0]) selected[category.id] = candidates[0].id;
       }
@@ -76,118 +140,230 @@ function autoSelections(room: Room) {
 }
 
 export function tick(room: Room, now: number): boolean {
-  if (room.phase !== 'searching' || room.searchEndsAt === null || now < room.searchEndsAt) return false;
+  if (
+    room.phase !== "searching" ||
+    room.searchEndsAt === null ||
+    now < room.searchEndsAt
+  )
+    return false;
   autoSelections(room);
-  newStep(room, 'selection');
+  newStep(room, "selection");
   return true;
 }
 
 function advance(room: Room, now: number) {
-  const active = room.players.filter(p => !p.left);
-  if (!active.length || !active.every(p => p.ready)) return;
-  if (room.phase === 'lobby') {
-    newStep(room, 'categories');
-    if (room.demo) room.categories = ['A person walking a dog', 'A car parked illegally', 'Something that makes you smile'].map(text => ({ id: uid(), text }));
-  } else if (room.phase === 'categories') {
-    if (!room.categories.length) throw new Error('Add at least one category before starting.');
-    newStep(room, 'searching');
+  const active = room.players.filter((p) => !p.left);
+  if (!active.length || !active.every((p) => p.ready)) return;
+  if (room.phase === "lobby") {
+    newStep(room, "categories");
+    if (room.demo)
+      room.categories = [
+        "A person walking a dog",
+        "A car parked illegally",
+        "Something that makes you smile",
+      ].map((text) => ({ id: uid(), text }));
+  } else if (room.phase === "categories") {
+    if (!room.categories.length)
+      throw new Error("Add at least one category before starting.");
+    newStep(room, "searching");
     room.searchEndsAt = now + room.durationSeconds * 1000;
     if (!room.demo) {
-      const players = room.players.filter(p => !p.left);
-      const starts = randomStarts(players.length, room.settings?.bannedCountries);
-      room.starts = Object.fromEntries(starts.map((start, i) => [players[i].id, start]));
+      const players = room.players.filter((p) => !p.left);
+      const starts = randomStarts(
+        players.length,
+        room.settings?.bannedCountries,
+      );
+      room.starts = Object.fromEntries(
+        starts.map((start, i) => [players[i].id, start]),
+      );
     }
     if (room.demo) {
-      room.players.filter(p => p.bot).forEach((p, i) => room.categories.forEach((c, j) => {
-        room.findings.push({ id: uid(), categoryId: c.id, playerId: p.id, view: demoView((i + j + 1) % 3), createdAt: now });
-      }));
+      room.players
+        .filter((p) => p.bot)
+        .forEach((p, i) =>
+          room.categories.forEach((c, j) => {
+            room.findings.push({
+              id: uid(),
+              categoryId: c.id,
+              playerId: p.id,
+              view: demoView((i + j + 1) % 3),
+              createdAt: now,
+            });
+          }),
+        );
     }
-  } else if (room.phase === 'searching') {
+  } else if (room.phase === "searching") {
     autoSelections(room);
-    newStep(room, 'selection');
-  } else if (room.phase === 'selection') {
+    newStep(room, "selection");
+  } else if (room.phase === "selection") {
     autoSelections(room);
-    room.queue = room.categories.flatMap(c => room.players.flatMap(p => {
-      const id = room.selections[p.id]?.[c.id];
-      return id ? [id] : [];
-    }));
+    room.queue = room.categories.flatMap((c) =>
+      room.players.flatMap((p) => {
+        const id = room.selections[p.id]?.[c.id];
+        return id ? [id] : [];
+      }),
+    );
     room.reviewIndex = 0;
     room.votes = {};
-    newStep(room, room.queue.length ? 'review' : 'finished');
-  } else if (room.phase === 'review') {
+    newStep(room, room.queue.length ? "review" : "finished");
+  } else if (room.phase === "review") {
     const finding = currentFinding(room)!;
-    const accepts = Object.values(room.votes).filter(v => v === 'accept').length;
-    const rejects = Object.values(room.votes).filter(v => v === 'reject').length;
+    const accepts = Object.values(room.votes).filter(
+      (v) => v === "accept",
+    ).length;
+    const rejects = Object.values(room.votes).filter(
+      (v) => v === "reject",
+    ).length;
     const accepted = accepts > rejects;
-    room.results.push({ itemId: finding.id, playerId: finding.playerId, categoryId: finding.categoryId, accepted, accepts, rejects });
-    if (accepted) room.players.find(p => p.id === finding.playerId)!.score++;
+    room.results.push({
+      itemId: finding.id,
+      playerId: finding.playerId,
+      categoryId: finding.categoryId,
+      accepted,
+      accepts,
+      rejects,
+    });
+    if (accepted) room.players.find((p) => p.id === finding.playerId)!.score++;
     room.reviewIndex++;
     room.votes = {};
-    newStep(room, room.reviewIndex < room.queue.length ? 'review' : 'finished');
+    newStep(room, room.reviewIndex < room.queue.length ? "review" : "finished");
   }
 }
 
-export function applyAction(room: Room, playerId: string, action: Action, now = Date.now()) {
-  const player = room.players.find(p => p.id === playerId && !p.left);
-  if (!player) throw new Error('You are no longer in this room. Join again to continue.');
+export function applyAction(
+  room: Room,
+  playerId: string,
+  action: Action,
+  now = Date.now(),
+) {
+  const player = room.players.find((p) => p.id === playerId && !p.left);
+  if (!player)
+    throw new Error("You are no longer in this room. Join again to continue.");
   tick(room, now);
-  if (action.type === 'ready') {
-    if (room.stepId !== action.stepId) throw new Error('The group has moved on. Please check the current step.');
-    if (room.phase === 'finished') throw new Error('Readiness is not used in this phase.');
-    if (action.ready && room.phase === 'categories' && !room.categories.length) throw new Error('Add at least one category first.');
+  if (action.type === "ready") {
+    if (room.stepId !== action.stepId)
+      throw new Error("The group has moved on. Please check the current step.");
+    if (room.phase === "finished")
+      throw new Error("Readiness is not used in this phase.");
+    if (action.ready && room.phase === "categories" && !room.categories.length)
+      throw new Error("Add at least one category first.");
     const finding = currentFinding(room);
-    if (room.phase === 'review' && finding?.playerId !== playerId) throw new Error('Cast your vote instead of marking yourself ready.');
+    if (room.phase === "review" && finding?.playerId !== playerId)
+      throw new Error("Cast your vote instead of marking yourself ready.");
     player.ready = action.ready;
-  } else if (action.type === 'update-settings') {
-    if (room.phase !== 'lobby') throw new Error('Room rules are locked once the round starts.');
-    const { durationSeconds: duration, proximityEnabled, bannedCountries } = action;
-    if (duration !== undefined && !(Number.isInteger(duration) && duration >= minDuration && duration <= maxDuration)) throw new Error('Search duration must be between 1 minute and 24 hours.');
-    const banned = bannedCountries && [...new Set(bannedCountries.map(code => code.trim().toUpperCase()))].sort();
-    if (banned?.some(code => !/^[A-Z]{2}$/.test(code))) throw new Error('Use two-letter country codes.');
+  } else if (action.type === "update-settings") {
+    if (room.phase !== "lobby")
+      throw new Error("Room rules are locked once the round starts.");
+    const {
+      durationSeconds: duration,
+      proximityEnabled,
+      bannedCountries,
+    } = action;
+    if (
+      duration !== undefined &&
+      !(
+        Number.isInteger(duration) &&
+        duration >= minDuration &&
+        duration <= maxDuration
+      )
+    )
+      throw new Error("Search duration must be between 1 minute and 24 hours.");
+    const banned =
+      bannedCountries &&
+      [
+        ...new Set(bannedCountries.map((code) => code.trim().toUpperCase())),
+      ].sort();
+    if (banned?.some((code) => !/^[A-Z]{2}$/.test(code)))
+      throw new Error("Use two-letter country codes.");
     const settings = { ...defaultSettings(), ...room.settings };
     const before = JSON.stringify([room.durationSeconds, settings]);
     room.durationSeconds = duration ?? room.durationSeconds;
-    room.settings = { proximityEnabled: proximityEnabled ?? settings.proximityEnabled, bannedCountries: banned ?? settings.bannedCountries };
+    room.settings = {
+      proximityEnabled: proximityEnabled ?? settings.proximityEnabled,
+      bannedCountries: banned ?? settings.bannedCountries,
+    };
     // Nobody should be marked ready for rules they have not seen.
-    if (JSON.stringify([room.durationSeconds, room.settings]) !== before) newStep(room, 'lobby');
-  } else if (action.type === 'add-category' || action.type === 'edit-category' || action.type === 'delete-category') {
-    if (room.phase !== 'categories') throw new Error('Categories are locked for this round.');
-    if (action.type !== 'delete-category' && (!action.text.trim() || action.text.trim().length > 100)) throw new Error('Use between 1 and 100 characters.');
-    if (action.type === 'add-category') {
-      if (room.categories.length >= 12) throw new Error('This round can have up to 12 categories.');
+    if (JSON.stringify([room.durationSeconds, room.settings]) !== before)
+      newStep(room, "lobby");
+  } else if (
+    action.type === "add-category" ||
+    action.type === "edit-category" ||
+    action.type === "delete-category"
+  ) {
+    if (room.phase !== "categories")
+      throw new Error("Categories are locked for this round.");
+    if (
+      action.type !== "delete-category" &&
+      (!action.text.trim() || action.text.trim().length > 100)
+    )
+      throw new Error("Use between 1 and 100 characters.");
+    if (action.type === "add-category") {
+      if (room.categories.length >= 12)
+        throw new Error("This round can have up to 12 categories.");
       room.categories.push({ id: uid(), text: action.text.trim() });
     } else {
-      const category = room.categories.find(c => c.id === action.categoryId);
-      if (!category) throw new Error('That category no longer exists.');
-      if (action.type === 'edit-category') category.text = action.text.trim();
-      else room.categories = room.categories.filter(c => c.id !== category.id);
+      const category = room.categories.find((c) => c.id === action.categoryId);
+      if (!category) throw new Error("That category no longer exists.");
+      if (action.type === "edit-category") category.text = action.text.trim();
+      else
+        room.categories = room.categories.filter((c) => c.id !== category.id);
     }
-    newStep(room, 'categories');
-  } else if (action.type === 'save-finding') {
-    if (room.phase !== 'searching') throw new Error('Search time is over. Choose from your saved views.');
-    if (!room.categories.some(c => c.id === action.categoryId)) throw new Error('Unknown category.');
-    if (action.view.demoScene !== undefined && !room.demo) throw new Error('Only real Street View findings can be saved in this room.');
-    const candidates = room.findings.filter(f => f.playerId === playerId && f.categoryId === action.categoryId);
-    if (candidates.length >= 12) throw new Error('You have 12 candidates here. Remove one before adding another.');
-    room.findings.push({ id: uid(), playerId, categoryId: action.categoryId, view: structuredClone(action.view), createdAt: now });
+    newStep(room, "categories");
+  } else if (action.type === "save-finding") {
+    if (room.phase !== "searching")
+      throw new Error("Search time is over. Choose from your saved views.");
+    if (!room.categories.some((c) => c.id === action.categoryId))
+      throw new Error("Unknown category.");
+    if (action.view.demoScene !== undefined && !room.demo)
+      throw new Error(
+        "Only real Street View findings can be saved in this room.",
+      );
+    const candidates = room.findings.filter(
+      (f) => f.playerId === playerId && f.categoryId === action.categoryId,
+    );
+    if (candidates.length >= 12)
+      throw new Error(
+        "You have 12 candidates here. Remove one before adding another.",
+      );
+    room.findings.push({
+      id: uid(),
+      playerId,
+      categoryId: action.categoryId,
+      view: structuredClone(action.view),
+      createdAt: now,
+    });
     autoSelections(room);
     player.ready = false;
-  } else if (action.type === 'delete-finding') {
-    if (!['searching', 'selection'].includes(room.phase)) throw new Error('Findings are locked.');
-    const finding = room.findings.find(f => f.id === action.findingId && f.playerId === playerId);
-    if (!finding) throw new Error('Finding not found.');
-    room.findings = room.findings.filter(f => f.id !== finding.id);
+  } else if (action.type === "delete-finding") {
+    if (!["searching", "selection"].includes(room.phase))
+      throw new Error("Findings are locked.");
+    const finding = room.findings.find(
+      (f) => f.id === action.findingId && f.playerId === playerId,
+    );
+    if (!finding) throw new Error("Finding not found.");
+    room.findings = room.findings.filter((f) => f.id !== finding.id);
     autoSelections(room);
     player.ready = false;
-  } else if (action.type === 'select') {
-    if (!['searching', 'selection'].includes(room.phase)) throw new Error('Selections are locked.');
-    if (!room.findings.some(f => f.id === action.findingId && f.categoryId === action.categoryId && f.playerId === playerId)) throw new Error('Invalid final selection.');
+  } else if (action.type === "select") {
+    if (!["searching", "selection"].includes(room.phase))
+      throw new Error("Selections are locked.");
+    if (
+      !room.findings.some(
+        (f) =>
+          f.id === action.findingId &&
+          f.categoryId === action.categoryId &&
+          f.playerId === playerId,
+      )
+    )
+      throw new Error("Invalid final selection.");
     (room.selections[playerId] ??= {})[action.categoryId] = action.findingId;
     player.ready = false;
-  } else if (action.type === 'vote') {
+  } else if (action.type === "vote") {
     const finding = currentFinding(room);
-    if (room.phase !== 'review' || finding?.id !== action.itemId) throw new Error('Voting has closed for that finding.');
-    if (finding.playerId === playerId) throw new Error('You cannot vote on your own finding.');
+    if (room.phase !== "review" || finding?.id !== action.itemId)
+      throw new Error("Voting has closed for that finding.");
+    if (finding.playerId === playerId)
+      throw new Error("You cannot vote on your own finding.");
     room.votes[playerId] = action.vote;
     player.ready = true;
   }
@@ -195,13 +371,15 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
 }
 
 export function simulatePeers(room: Room, now = Date.now()): boolean {
-  if (!room.demo || room.phase === 'finished') return false;
-  const bots = room.players.filter(p => p.bot && !p.left && !p.ready);
-  if (!bots.length || (room.phase === 'categories' && !room.categories.length)) return false;
+  if (!room.demo || room.phase === "finished") return false;
+  const bots = room.players.filter((p) => p.bot && !p.left && !p.ready);
+  if (!bots.length || (room.phase === "categories" && !room.categories.length))
+    return false;
   for (const bot of bots) {
     const finding = currentFinding(room);
-    if (room.phase === 'review' && finding && finding.playerId !== bot.id) {
-      room.votes[bot.id] = (room.reviewIndex + bot.color) % 4 === 0 ? 'reject' : 'accept';
+    if (room.phase === "review" && finding && finding.playerId !== bot.id) {
+      room.votes[bot.id] =
+        (room.reviewIndex + bot.color) % 4 === 0 ? "reject" : "accept";
     }
     bot.ready = true;
   }
@@ -210,22 +388,45 @@ export function simulatePeers(room: Room, now = Date.now()): boolean {
 }
 
 export function snapshot(room: Room, meId: string): SessionState {
-  if (!room.players.some(p => p.id === meId && !p.left)) throw new Error('Join this room to continue.');
+  if (!room.players.some((p) => p.id === meId && !p.left))
+    throw new Error("Join this room to continue.");
   const finding = currentFinding(room);
   return structuredClone({
-    id: room.id, revision: room.revision, stepId: room.stepId, phase: room.phase, meId,
-    demo: room.demo, settings: { ...defaultSettings(), ...room.settings }, durationSeconds: room.durationSeconds, serverTime: Date.now(), searchEndsAt: room.searchEndsAt,
+    id: room.id,
+    revision: room.revision,
+    stepId: room.stepId,
+    phase: room.phase,
+    meId,
+    demo: room.demo,
+    settings: { ...defaultSettings(), ...room.settings },
+    durationSeconds: room.durationSeconds,
+    serverTime: Date.now(),
+    searchEndsAt: room.searchEndsAt,
     start: room.starts?.[meId] ?? null,
-    players: room.players.map(({ bot: _bot, lastSeen: _seen, ...p }) => p), categories: room.categories,
-    ownFindings: room.findings.filter(f => f.playerId === meId), selections: room.selections[meId] ?? {},
-    review: room.phase === 'review' && finding ? {
-      id: finding.id, finding, index: room.reviewIndex, total: room.queue.length,
-      revealed: false, ownVote: room.votes[meId] ?? null,
-      votesCast: Object.keys(room.votes).length, eligibleVoters: room.players.filter(p => p.id !== finding.playerId && !p.left).length,
-      result: null,
-    } : null,
+    players: room.players.map(({ bot: _bot, lastSeen: _seen, ...p }) => p),
+    categories: room.categories,
+    ownFindings: room.findings.filter((f) => f.playerId === meId),
+    selections: room.selections[meId] ?? {},
+    review:
+      room.phase === "review" && finding
+        ? {
+            id: finding.id,
+            finding,
+            index: room.reviewIndex,
+            total: room.queue.length,
+            revealed: false,
+            ownVote: room.votes[meId] ?? null,
+            votesCast: Object.keys(room.votes).length,
+            eligibleVoters: room.players.filter(
+              (p) => p.id !== finding.playerId && !p.left,
+            ).length,
+            result: null,
+          }
+        : null,
     results: room.results,
   });
 }
 
-export function reconcile(room: Room) { advance(room, Date.now()); }
+export function reconcile(room: Room) {
+  advance(room, Date.now());
+}

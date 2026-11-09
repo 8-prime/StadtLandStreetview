@@ -1,24 +1,117 @@
 <script lang="ts">
-  import type { Action, SessionState } from '../lib/api/types';
-  import Icon from '../lib/components/Icon.svelte';
-  import Avatar from '../lib/components/Avatar.svelte';
-  import StreetView from '../lib/maps/StreetView.svelte';
-  export let session: SessionState;
-  export let busy = false;
-  export let onaction: (action: Action) => Promise<boolean>;
-  $: review = session.review!;
-  $: owner = session.players.find(p => p.id === review.finding.playerId)!;
-  $: category = session.categories.find(c => c.id === review.finding.categoryId)!;
-  $: own = review.finding.playerId === session.meId;
+    import type { Action, SessionState } from "../lib/api/types";
+    import Icon from "../lib/components/Icon.svelte";
+    import Avatar from "../lib/components/Avatar.svelte";
+    import StreetView from "../lib/maps/StreetView.svelte";
+    export let session: SessionState;
+    export let busy = false;
+    export let onaction: (action: Action) => Promise<boolean>;
+    $: review = session.review!;
+    $: owner = session.players.find((p) => p.id === review.finding.playerId)!;
+    $: category = session.categories.find(
+        (c) => c.id === review.finding.categoryId,
+    )!;
+    $: own = review.finding.playerId === session.meId;
 </script>
 
-<section class="phase-heading"><div><span class="eyebrow">03 / JUDGE THE FINDS</span><h1>MATCH OR <span>MASSIVE STRETCH?</span></h1></div><span class="phase-note"><Icon name="eye"/> Finding {review.index + 1} of {review.total}</span></section>
+<section class="phase-heading">
+    <div>
+        <span class="eyebrow">03 / JUDGE THE FINDS</span>
+        <h1>MATCH OR <span>MASSIVE STRETCH?</span></h1>
+    </div>
+    <span class="phase-note"
+        ><Icon name="eye" /> Finding {review.index + 1} of {review.total}</span
+    >
+</section>
 <div class="review-layout">
-  <section class="review-main panel"><div class="review-title"><div><span class="eyebrow">THE ASSIGNMENT</span><h2 title={category.text}>{category.text}</h2></div><div class="finding-owner"><Avatar player={owner} small/><span><strong title={owner.name}>{owner.name}{own ? ' (you)' : ''}</strong><small>SUBMITTED THIS EVIDENCE</small></span></div></div><div class="view-stage"><div class="view-frame">{#key review.finding.view.demoScene !== undefined ? 'demo' : 'google'}<StreetView view={review.finding.view}/>{/key}</div></div><div class="review-bottom"><span><Icon name="camera" size={15}/> ORIGINAL FRAME · LOCKED FOR EVERYONE</span><span>EXHIBIT {String(review.index + 1).padStart(2, '0')}</span></div></section>
-  <aside class="panel voting-panel">
-    <span class="eyebrow">YOUR VERDICT</span><h2>{own ? 'A moment for your find.' : 'A match, or a stretch?'}</h2><p>{own ? 'Your evidence. Their verdict. Mark ready when you’ve had a look; we’ll move on once everyone votes.' : 'Does the saved view fit the assignment? Cast your vote — it counts as ready automatically.'}</p>
-    {#if !own}<div class="vote-options"><button class:chosen={review.ownVote === 'accept'} class="vote-option accept" disabled={busy} aria-pressed={review.ownVote === 'accept'} onclick={() => onaction({ type: 'vote', itemId: review.id, vote: 'accept' })}><Icon name="check" size={25}/><span>Matches</span>{#if review.ownVote === 'accept'}<span class="vote-selected">YOUR PICK</span>{/if}</button><button class:chosen={review.ownVote === 'reject'} class="vote-option reject" disabled={busy} aria-pressed={review.ownVote === 'reject'} onclick={() => onaction({ type: 'vote', itemId: review.id, vote: 'reject' })}><Icon name="close" size={25}/><span>Doesn’t match</span>{#if review.ownVote === 'reject'}<span class="vote-selected">YOUR PICK</span>{/if}</button></div>
-    {:else}<div class="own-finding-character"><Avatar player={owner} large mood="searching"/><span>NO SELF-ENDORSEMENTS.</span></div>{/if}
-    <div class="vote-progress"><span><strong>{review.votesCast}</strong> of {review.eligibleVoters} votes in</span><div class="progress-track"><span style={`width:${review.eligibleVoters ? review.votesCast / review.eligibleVoters * 100 : 0}%`}></span></div></div><p class="small muted">{own ? 'You can’t vote on your own finding.' : 'Votes stay private until everyone responds. Change yours while waiting.'}</p>
-  </aside>
+    <section class="review-main panel">
+        <div class="review-title">
+            <div>
+                <span class="eyebrow">THE ASSIGNMENT</span>
+                <h2 title={category.text}>{category.text}</h2>
+            </div>
+            <div class="finding-owner">
+                <Avatar player={owner} small /><span
+                    ><strong title={owner.name}
+                        >{owner.name}{own ? " (you)" : ""}</strong
+                    ><small>SUBMITTED THIS EVIDENCE</small></span
+                >
+            </div>
+        </div>
+        <div class="view-stage">
+            <div class="view-frame">
+                {#key review.finding.view.demoScene !== undefined ? "demo" : "google"}<StreetView
+                        view={review.finding.view}
+                    />{/key}
+            </div>
+        </div>
+        <div class="review-bottom">
+            <span
+                ><Icon name="camera" size={15} /> ORIGINAL FRAME · LOCKED FOR EVERYONE</span
+            ><span>EXHIBIT {String(review.index + 1).padStart(2, "0")}</span>
+        </div>
+    </section>
+    <aside class="panel voting-panel">
+        <span class="eyebrow">YOUR VERDICT</span>
+        <h2>{own ? "A moment for your find." : "A match, or a stretch?"}</h2>
+        <p>
+            {own
+                ? "Your evidence. Their verdict. Mark ready when you’ve had a look; we’ll move on once everyone votes."
+                : "Does the saved view fit the assignment? Cast your vote — it counts as ready automatically."}
+        </p>
+        {#if !own}<div class="vote-options">
+                <button
+                    class:chosen={review.ownVote === "accept"}
+                    class="vote-option accept"
+                    disabled={busy}
+                    aria-pressed={review.ownVote === "accept"}
+                    onclick={() =>
+                        onaction({
+                            type: "vote",
+                            itemId: review.id,
+                            vote: "accept",
+                        })}
+                    ><Icon name="check" size={25} /><span>Matches</span
+                    >{#if review.ownVote === "accept"}<span
+                            class="vote-selected">YOUR PICK</span
+                        >{/if}</button
+                ><button
+                    class:chosen={review.ownVote === "reject"}
+                    class="vote-option reject"
+                    disabled={busy}
+                    aria-pressed={review.ownVote === "reject"}
+                    onclick={() =>
+                        onaction({
+                            type: "vote",
+                            itemId: review.id,
+                            vote: "reject",
+                        })}
+                    ><Icon name="close" size={25} /><span>Doesn’t match</span
+                    >{#if review.ownVote === "reject"}<span
+                            class="vote-selected">YOUR PICK</span
+                        >{/if}</button
+                >
+            </div>
+        {:else}<div class="own-finding-character">
+                <Avatar player={owner} large mood="searching" /><span
+                    >NO SELF-ENDORSEMENTS.</span
+                >
+            </div>{/if}
+        <div class="vote-progress">
+            <span
+                ><strong>{review.votesCast}</strong> of {review.eligibleVoters} votes
+                in</span
+            >
+            <div class="progress-track">
+                <span
+                    style={`width:${review.eligibleVoters ? (review.votesCast / review.eligibleVoters) * 100 : 0}%`}
+                ></span>
+            </div>
+        </div>
+        <p class="small muted">
+            {own
+                ? "You can’t vote on your own finding."
+                : "Votes stay private until everyone responds. Change yours while waiting."}
+        </p>
+    </aside>
 </div>

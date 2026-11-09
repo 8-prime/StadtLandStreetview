@@ -1,13 +1,30 @@
-export type Phase = 'lobby' | 'categories' | 'searching' | 'selection' | 'review' | 'finished';
-export type Vote = 'accept' | 'reject';
-export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'offline';
-export interface RoomSettings { proximityEnabled: boolean; bannedCountries: string[] }
-export const defaultSettings = (): RoomSettings => ({ proximityEnabled: false, bannedCountries: [] });
-export type ProximityBand = 'inactive' | 'quiet' | 'nearby' | 'close';
-export interface ProximityState { stepId: string; band: ProximityBand }
+export type Phase =
+  "lobby" | "categories" | "searching" | "selection" | "review" | "finished";
+export type Vote = "accept" | "reject";
+export type Connection =
+  "connecting" | "connected" | "reconnecting" | "offline";
+export interface RoomSettings {
+  proximityEnabled: boolean;
+  bannedCountries: string[];
+}
+export const defaultSettings = (): RoomSettings => ({
+  proximityEnabled: false,
+  bannedCountries: [],
+});
+export type ProximityBand = "inactive" | "quiet" | "nearby" | "close";
+export interface ProximityState {
+  stepId: string;
+  band: ProximityBand;
+}
 // The banned country containing the last reported position, if any.
-export interface TerritoryState { stepId: string; banned: string | null }
-export interface PositionReport { stepId: string; position: { lat: number; lng: number } | null }
+export interface TerritoryState {
+  stepId: string;
+  banned: string | null;
+}
+export interface PositionReport {
+  stepId: string;
+  position: { lat: number; lng: number } | null;
+}
 
 export interface Viewpoint {
   panoramaId: string;
@@ -29,7 +46,10 @@ export interface Player {
   left: boolean;
 }
 
-export interface Category { id: string; text: string }
+export interface Category {
+  id: string;
+  text: string;
+}
 export interface Finding {
   id: string;
   playerId: string;
@@ -79,23 +99,40 @@ export interface SessionState {
 }
 
 export type Action =
-  | { type: 'ready'; stepId: string; ready: boolean }
+  | { type: "ready"; stepId: string; ready: boolean }
   // Lobby only. Omitted fields keep their current value.
-  | { type: 'update-settings'; durationSeconds?: number; proximityEnabled?: boolean; bannedCountries?: string[] }
-  | { type: 'add-category'; text: string }
-  | { type: 'edit-category'; categoryId: string; text: string }
-  | { type: 'delete-category'; categoryId: string }
-  | { type: 'save-finding'; categoryId: string; view: Viewpoint }
-  | { type: 'delete-finding'; findingId: string }
-  | { type: 'select'; categoryId: string; findingId: string }
-  | { type: 'vote'; itemId: string; vote: Vote };
+  | {
+      type: "update-settings";
+      durationSeconds?: number;
+      proximityEnabled?: boolean;
+      bannedCountries?: string[];
+    }
+  | { type: "add-category"; text: string }
+  | { type: "edit-category"; categoryId: string; text: string }
+  | { type: "delete-category"; categoryId: string }
+  | { type: "save-finding"; categoryId: string; view: Viewpoint }
+  | { type: "delete-finding"; findingId: string }
+  | { type: "select"; categoryId: string; findingId: string }
+  | { type: "vote"; itemId: string; vote: Vote };
 
 export interface SessionApi {
-  create(name: string, durationSeconds: number, demo?: boolean, settings?: RoomSettings): Promise<string>;
+  create(
+    name: string,
+    durationSeconds: number,
+    demo?: boolean,
+    settings?: RoomSettings,
+  ): Promise<string>;
   join(id: string, name: string): Promise<void>;
   get(id: string): Promise<SessionState>;
   send(id: string, action: Action): Promise<void>;
   leave(id: string): Promise<void>;
   reportPosition(id: string, report: PositionReport): void;
-  subscribe(id: string, state: (value: SessionState) => void, connection: (value: Connection) => void, error: (message: string) => void, proximity?: (value: ProximityState) => void, territory?: (value: TerritoryState) => void): () => void;
+  subscribe(
+    id: string,
+    state: (value: SessionState) => void,
+    connection: (value: Connection) => void,
+    error: (message: string) => void,
+    proximity?: (value: ProximityState) => void,
+    territory?: (value: TerritoryState) => void,
+  ): () => void;
 }
