@@ -5,6 +5,7 @@
   import ProximityRadio from '../lib/components/ProximityRadio.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import { countryFlag, countryName } from '../lib/api/countries';
+  import { formatClock } from '../lib/api/duration';
   import Pager from '../lib/components/Pager.svelte';
   import CategoryRail from '../lib/components/CategoryRail.svelte';
   import StreetView from '../lib/maps/StreetView.svelte';
@@ -28,7 +29,7 @@
   let lastSent = 0;
   $: if (!connected) { lastPosition = ''; lastSent = 0; }
   $: remaining = Math.max(0, Math.ceil(((session.searchEndsAt ?? 0) - (now + offset)) / 1000));
-  $: timer = `${Math.floor(remaining / 60).toString().padStart(2, '0')}:${(remaining % 60).toString().padStart(2, '0')}`;
+  $: timer = formatClock(remaining);
   $: reportsPosition = session.settings.proximityEnabled || session.settings.bannedCountries.length > 0;
   $: offLimits = current && banned ? `${countryFlag(banned)} ${countryName(banned)} is off-limits this round. Keep moving.` : '';
   $: category = session.categories.find(c => c.id === categoryId);

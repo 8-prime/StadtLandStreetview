@@ -1212,3 +1212,55 @@ async fn websocket_reports_banned_territory_without_the_radio() {
     assert_eq!(saved.status, StatusCode::FORBIDDEN);
     socket.close(None).await.unwrap();
 }
+
+#[tokio::test]
+async fn lobby_settings_can_be_patched_by_any_member() {
+    let (_, app) = app();
+    let (id, alex) = create(&app, "Alex", None).await;
+    let mika = join(&app, &id, "Mika", None).await;
+    let path = format!("/api/sessions/{id}/settings");
+    let reply = request(
+        &app,
+        Method::PATCH,
+        &path,
+        Some(&mika),
+        Some(json!({ "durationSeconds": 5400, "bannedCountries": ["fr", "DE"] })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::NO_CONTENT);
+    let state = snapshot(&app, &id, &alex).await;
+    assert_eq!(state["durationSeconds"], 5400);
+    assert_eq!(state["settings"]["bannedCountries"], json!(["DE", "FR"]));
+    assert_eq!(state["settings"]["proximityEnabled"], false);
+
+    for invalid in [
+        json!({ "durationSeconds": 86401 }),
+        json!({ "bannedCountries": ["DEU"] }),
+        json!({ "radius": 5 }),
+    ] {
+        let reply = request(
+            &app,
+            Method::PATCH,
+            &path,
+            Some(&alex),
+            Some(invalid.clone()),
+        )
+        .await;
+        assert!(reply.status.is_client_error(), "{invalid}");
+    }
+    let state = snapshot(&app, &id, &alex).await;
+    assert_eq!(state["durationSeconds"], 5400);
+    let reply = request(&app, Method::PATCH, &path, None, Some(json!({}))).await;
+    assert_eq!(reply.status, StatusCode::UNAUTHORIZED);
+
+    ready_all(&app, &id, &[&alex, &mika]).await;
+    let reply = request(
+        &app,
+        Method::PATCH,
+        &path,
+        Some(&alex),
+        Some(json!({ "proximityEnabled": true })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CONFLICT);
+}

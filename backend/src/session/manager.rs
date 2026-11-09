@@ -6,7 +6,8 @@ use uuid::Uuid;
 
 use super::{
     Phase, Position, ProximityState, Result, RoomSettings, Session, SessionError, SessionEvent,
-    SessionMembership, SessionState, TerritoryState, Viewpoint, Vote, geography, new_room_code,
+    SessionMembership, SessionState, SettingsUpdate, TerritoryState, Viewpoint, Vote, geography,
+    new_room_code,
 };
 
 struct SessionHandle {
@@ -177,6 +178,18 @@ impl SessionManager {
     ) -> Result<()> {
         self.update(session_id, |session, now| {
             session.ready(player_id, step_id, is_ready, now)
+        })
+        .await
+    }
+
+    pub async fn update_settings(
+        &self,
+        session_id: &str,
+        player_id: Uuid,
+        update: SettingsUpdate,
+    ) -> Result<()> {
+        self.update(session_id, |session, _| {
+            session.update_settings(player_id, update)
         })
         .await
     }

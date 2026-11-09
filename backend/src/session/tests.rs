@@ -1114,3 +1114,89 @@ fn findings_in_banned_countries_are_rejected() {
         .add_finding(players[0], category, paris, at(1000))
         .unwrap();
 }
+
+#[test]
+fn lobby_members_can_change_room_rules_and_must_ready_again() {
+    let (mut session, players) = room(2);
+    let step = session.step_id;
+    session.ready(players[0], step, true, at(1000)).unwrap();
+    session
+        .update_settings(
+            players[1],
+            SettingsUpdate {
+                duration_seconds: Some(24 * 60 * 60),
+                banned_countries: Some(vec!["fr".into(), "DE".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(session.duration_sec, 24 * 60 * 60);
+    assert_eq!(session.settings.banned_countries, ["DE", "FR"]);
+    assert!(!session.settings.proximity_enabled);
+    assert_ne!(session.step_id, step);
+    assert!(!session.players[&players[0]].is_ready);
+
+    // Repeating the current rules keeps everyone's readiness.
+    let step = session.step_id;
+    session.ready(players[0], step, true, at(1000)).unwrap();
+    session
+        .update_settings(
+            players[0],
+            SettingsUpdate {
+                banned_countries: Some(vec!["FR".into(), "de".into()]),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(session.step_id, step);
+    assert!(session.players[&players[0]].is_ready);
+
+    // A rejected update applies none of its fields.
+    for update in [
+        SettingsUpdate {
+            duration_seconds: Some(24 * 60 * 60 + 1),
+            proximity_enabled: Some(true),
+            ..Default::default()
+        },
+        SettingsUpdate {
+            duration_seconds: Some(59),
+            ..Default::default()
+        },
+        SettingsUpdate {
+            proximity_enabled: Some(true),
+            banned_countries: Some(vec!["DEU".into()]),
+            ..Default::default()
+        },
+    ] {
+        assert!(matches!(
+            session.update_settings(players[0], update),
+            Err(SessionError::InvalidInput(_))
+        ));
+    }
+    assert!(!session.settings.proximity_enabled);
+    assert_eq!(session.step_id, step);
+
+    ready_all(&mut session);
+    assert_eq!(session.phase, Phase::Categories);
+    assert!(matches!(
+        session.update_settings(
+            players[0],
+            SettingsUpdate {
+                proximity_enabled: Some(true),
+                ..Default::default()
+            }
+        ),
+        Err(SessionError::Conflict(_))
+    ));
+}
+
+#[test]
+fn custom_search_durations_reach_the_deadline() {
+    let mut session = Session::new(90 * 60, at(1000)).unwrap();
+    let player = session.join("Alex".into(), None).unwrap();
+    assert!(Session::new(24 * 60 * 60 + 1, at(1000)).is_err());
+    ready_all(&mut session);
+    session.add_category(player, "Door".into()).unwrap();
+    ready_all(&mut session);
+    assert_eq!(session.search_ends_at, Some(1000 + 90 * 60 * 1000));
+}

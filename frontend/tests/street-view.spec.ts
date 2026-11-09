@@ -207,7 +207,7 @@ test('optional radio tracks peers within 5 km, very close, map exit, and viewpor
   await option.check();
   await page.getByLabel('Your spotter name').fill('Ada');
   await page.locator('form').getByRole('button', { name: 'Create room', exact: true }).click();
-  await expect(page.getByText('NEIGHBOURHOOD RADIO ON · 5 KM')).toBeVisible();
+  await expect(page.getByRole('checkbox', { name: /Neighbourhood radio/ })).toBeChecked();
   const other = await context.newPage();
   await mockMaps(other);
   await other.goto(page.url());

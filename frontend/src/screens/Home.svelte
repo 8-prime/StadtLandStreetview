@@ -4,6 +4,7 @@
   import Spotter from '../lib/components/Spotter.svelte';
   import HomeBackdrop from '../lib/components/HomeBackdrop.svelte';
   import CountryPicker from '../lib/components/CountryPicker.svelte';
+  import DurationPicker from '../lib/components/DurationPicker.svelte';
   import { mockMode } from '../lib/api';
   import type { RoomSettings } from '../lib/api/types';
   export let busy = false;
@@ -48,7 +49,7 @@
       <input id="player-name" bind:value={name} placeholder="An excellent alias, probably" required maxlength="24" autocomplete="nickname" pattern=".*\S.*"/>
       {#if tab === 'create'}
         <label for="search-duration">Time on the streets</label>
-        <select id="search-duration" bind:value={duration}><option value={60}>1 minute · test drive</option><option value={300}>5 minutes · quick snoop</option><option value={600}>10 minutes · proper investigation</option><option value={900}>15 minutes · deep dive</option><option value={1200}>20 minutes · leave no street unturned</option></select>
+        <DurationPicker id="search-duration" bind:value={duration} disabled={busy}/>
         <label class="room-option"><input type="checkbox" bind:checked={proximityEnabled}/><span><strong>Neighbourhood radio</strong><small>Hear when a spotter is within 5 km.</small></span><span class="option-range" aria-hidden="true">5 km</span></label>
         <CountryPicker bind:selected={bannedCountries} disabled={busy}/>
       {:else}
@@ -67,11 +68,6 @@
 <style>
   .home-scene { position: relative; height: 100%; isolation: isolate; }
   .home { position: relative; z-index: 1; }
-  .room-option { display: flex; align-items: center; gap: 9px; margin: 12px 0 0; padding: 8px; border: 1.5px dashed #202b4555; border-radius: 5px; cursor: pointer; }
-  .room-option input { width: 18px; height: 18px; margin: 0; flex-shrink: 0; accent-color: var(--blue); }
-  .room-option > span:first-of-type { flex: 1; min-width: 0; }
-  .room-option strong { display: block; font-size: 11px; }
-  .room-option small { display: block; margin-top: 2px; font-size: 9px; font-weight: 600; color: var(--muted); }
-  .option-range { padding: 4px; border: 1.5px solid var(--ink); background: var(--yellow); font-size: 9px; white-space: nowrap; transform: rotate(-4deg); }
-  @media (max-height: 780px) { .room-option { margin-top: 8px; padding: 6px; } }
+  .entry-card .room-option { margin-top: 12px; }
+  @media (max-height: 780px) { .entry-card .room-option { margin-top: 8px; } }
 </style>

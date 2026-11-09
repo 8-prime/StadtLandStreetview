@@ -13,7 +13,7 @@ use super::{
     error::ApiResult,
     extract::{ApiJson, ApiPath},
 };
-use crate::session::{SessionStartInfo, SessionState, Viewpoint, Vote};
+use crate::session::{SessionStartInfo, SessionState, SettingsUpdate, Viewpoint, Vote};
 
 #[derive(Serialize)]
 pub(super) struct IdResponse<T> {
@@ -128,6 +128,18 @@ pub(super) async fn ready(
             info.step_id,
             info.ready,
         )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(super) async fn update_settings(
+    State(state): State<AppState>,
+    member: Member,
+    ApiJson(update): ApiJson<SettingsUpdate>,
+) -> ApiResult<StatusCode> {
+    state
+        .sessions
+        .update_settings(&member.session_id, member.player_id, update)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

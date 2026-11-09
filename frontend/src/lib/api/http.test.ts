@@ -39,3 +39,13 @@ it('handles proximity messages without fetching game snapshots and reports only 
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
   } finally { unsubscribe(); }
 });
+
+it('sends lobby rule changes as a partial settings patch', async () => {
+  const fetch = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+  vi.stubGlobal('fetch', fetch);
+  await httpApi.send('ROOM', { type: 'update-settings', durationSeconds: 5400, bannedCountries: ['DE'] });
+  const [url, init] = fetch.mock.calls[0];
+  expect(url).toBe('/api/sessions/ROOM/settings');
+  expect(init.method).toBe('PATCH');
+  expect(JSON.parse(init.body)).toEqual({ durationSeconds: 5400, bannedCountries: ['DE'] });
+});

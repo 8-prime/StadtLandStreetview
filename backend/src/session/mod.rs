@@ -18,7 +18,7 @@ pub const MAX_PLAYERS: usize = 12;
 pub const MAX_CATEGORIES: usize = 12;
 pub const MAX_FINDINGS_PER_CATEGORY: usize = 12;
 pub const MIN_DURATION_SECONDS: u64 = 60;
-pub const MAX_DURATION_SECONDS: u64 = 20 * 60;
+pub const MAX_DURATION_SECONDS: u64 = 24 * 60 * 60;
 
 #[derive(Debug)]
 struct Player {
@@ -59,11 +59,7 @@ struct Session {
 
 impl Session {
     fn new(duration_sec: u64, now: DateTime<Utc>) -> Result<Self> {
-        if !(MIN_DURATION_SECONDS..=MAX_DURATION_SECONDS).contains(&duration_sec) {
-            return Err(SessionError::InvalidInput(
-                "Search duration must be between 60 and 1200 seconds.",
-            ));
-        }
+        validate_duration(duration_sec)?;
         Ok(Self {
             id: new_room_code(),
             phase: Phase::Lobby,
@@ -251,6 +247,45 @@ impl Session {
         }
         self.players.get_mut(&player_id).unwrap().is_ready = is_ready;
         self.advance(now);
+        Ok(())
+    }
+
+    /// Any member may change the room rules while the crew gathers in the lobby.
+    /// Validation happens before any field is applied, so a rejected update changes nothing.
+    fn update_settings(&mut self, player_id: Uuid, update: SettingsUpdate) -> Result<()> {
+        self.active_player(player_id)?;
+        self.require_phase(&[Phase::Lobby])?;
+        if let Some(duration) = update.duration_seconds {
+            validate_duration(duration)?;
+        }
+        let banned = update
+            .banned_countries
+            .as_deref()
+            .map(geography::normalize_countries)
+            .transpose()?;
+        let mut changed = false;
+        if let Some(duration) = update.duration_seconds
+            && duration != self.duration_sec
+        {
+            self.duration_sec = duration;
+            changed = true;
+        }
+        if let Some(enabled) = update.proximity_enabled
+            && enabled != self.settings.proximity_enabled
+        {
+            self.settings.proximity_enabled = enabled;
+            changed = true;
+        }
+        if let Some(banned) = banned
+            && banned != self.settings.banned_countries
+        {
+            self.settings.banned_countries = banned;
+            changed = true;
+        }
+        // Nobody should be marked ready for rules they have not seen.
+        if changed {
+            self.new_step(Phase::Lobby);
+        }
         Ok(())
     }
 
@@ -591,6 +626,15 @@ impl Session {
 
 fn new_room_code() -> String {
     Uuid::new_v4().simple().to_string()[..6].to_ascii_uppercase()
+}
+
+fn validate_duration(duration_sec: u64) -> Result<()> {
+    if !(MIN_DURATION_SECONDS..=MAX_DURATION_SECONDS).contains(&duration_sec) {
+        return Err(SessionError::InvalidInput(
+            "Search duration must be between 1 minute and 24 hours.",
+        ));
+    }
+    Ok(())
 }
 
 fn validate_text(value: String, max: usize, message: &'static str) -> Result<String> {

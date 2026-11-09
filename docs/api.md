@@ -20,6 +20,7 @@ All paths below are relative to `/api`.
 | Method | Path | Request / response |
 | --- | --- | --- |
 | POST | `/sessions` | `{ name, durationSeconds, settings?: { proximityEnabled?: boolean, bannedCountries?: string[] } }` → `{ id }`; establish membership; radio defaults off, no banned countries |
+| PATCH | `/sessions/{sessionId}/settings` | `{ durationSeconds?, proximityEnabled?, bannedCountries? }`; lobby only, any member; omitted fields are unchanged |
 | POST | `/sessions/{sessionId}/join` | `{ name }`; establish or resume membership |
 | POST | `/sessions/{sessionId}/leave` | Explicitly leave; preserve submissions and scores |
 | GET | `/sessions/{sessionId}` | A personalized `SessionState` snapshot |
@@ -60,7 +61,7 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 | `phase` | `lobby`, `categories`, `searching`, `selection`, `review`, or `finished` |
 | `meId` | Authenticated player's ID |
 | `demo` | `false` for backend rooms |
-| `settings` | `{ proximityEnabled: boolean, bannedCountries: string[] }`; fixed at room creation and shared by all players. Codes are sorted, upper-case ISO 3166-1 alpha-2 |
+| `settings` | `{ proximityEnabled: boolean, bannedCountries: string[] }`; set at creation, editable in the lobby, and shared by all players. Codes are sorted, upper-case ISO 3166-1 alpha-2 |
 | `durationSeconds`, `serverTime`, `searchEndsAt` | Duration, server clock, and deadline (`null` before searching) |
 | `start` | This player's private search start `{ lat, lng }`, assigned when searching begins; `null` before |
 | `players` | `{ id, name, color, ready, connected, score, left }[]`; color is a palette index 0–5 |
@@ -98,7 +99,7 @@ The client reconnects with exponential backoff (up to 15 seconds) and resynchron
 
 ### Optional neighbourhood radio
 
-Enable `settings.proximityEnabled` when creating a room. During searching only, a client reports the position of its visible, valid Street View panorama over its authenticated WebSocket:
+Enable `settings.proximityEnabled` when creating a room or in the lobby. During searching only, a client reports the position of its visible, valid Street View panorama over its authenticated WebSocket:
 
 ```json
 { "type": "position", "stepId": "current-search-step", "position": { "lat": 52.52, "lng": 13.405 } }
@@ -118,7 +119,7 @@ Positions expire after 15 seconds without an update, are cleared on disconnect/l
 
 ### Off-limits countries and search starts
 
-`settings.bannedCountries` lists ISO 3166-1 alpha-2 codes. Creation normalizes them to upper case, sorts them, and removes duplicates. Malformed codes return `400`, as does a list that bans every country with search starts.
+`settings.bannedCountries` lists ISO 3166-1 alpha-2 codes. Creation and lobby updates normalize them to upper case, sort them, and remove duplicates. Malformed codes return `400`, as does a list that bans every country with search starts.
 
 - When searching begins, the server gives each active player a random `start`, chosen from a bundled town list after removing banned countries. Countries are drawn evenly and don't repeat until all are used. Other players' starts are never sent.
 - `POST /findings` returns `403` if the view's position is in a banned country. The lookup uses bundled OpenStreetMap boundaries and needs no Google request.
@@ -132,7 +133,7 @@ Positions expire after 15 seconds without an update, are cleared on disconnect/l
 
 ## Progression rules used by the UI
 
-1. All active members ready in the lobby → category collection.
+1. All active members ready in the lobby → category collection. Any member can change the duration, radio, or off-limits countries in the lobby with `PATCH /settings`. An actual change resets readiness and issues a new `stepId`; an update that repeats the current values changes nothing. Invalid values reject the whole update. Settings are locked once the lobby ends (`409`).
 2. All ready with at least one category → searching. Establish one server deadline.
 3. Deadline reached or all active members ready during searching → final selection. Search readiness is reversible until everyone is ready; no findings are required to mark done.
 4. All ready after selection → first review item, or finished if nobody submitted a finding.
@@ -151,4 +152,4 @@ Reset readiness and assign a new `stepId` at each transition. A category edit or
 - Final scores count accepted matches. The UI presents tied leaders as joint winners.
 - Disconnection preserves membership and the readiness requirement. Explicit leave excludes that player from future readiness/voting requirements but retains their findings and score. Re-evaluate progression after a leave.
 
-The UI currently offers durations of 1, 5, 10, 15, or 20 minutes, limits names to 24 characters and category text to 100, and supports up to 12 peers, 12 categories, and 12 saved candidates per player/category. These are prototype limits and can be revised together with the server.
+Search durations range from 1 minute to 24 hours (`durationSeconds` 60–86400). The UI offers 1, 5, 10, 15, or 20 minutes plus a custom hours/minutes value. It limits names to 24 characters and category text to 100, and supports up to 12 peers, 12 categories, and 12 saved candidates per player/category. These are prototype limits and can be revised together with the server.

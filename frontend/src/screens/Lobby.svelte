@@ -1,16 +1,23 @@
 <script lang="ts">
-  import type { SessionState } from '../lib/api/types';
-  import { countryName } from '../lib/api/countries';
+  import type { Action, SessionState } from '../lib/api/types';
+  import { formatDuration } from '../lib/api/duration';
   import Avatar from '../lib/components/Avatar.svelte';
+  import CountryPicker from '../lib/components/CountryPicker.svelte';
+  import DurationPicker from '../lib/components/DurationPicker.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import Spotter from '../lib/components/Spotter.svelte';
   export let session: SessionState;
+  export let busy = false;
+  export let connected = true;
   export let oncopy: () => void;
+  export let onaction: (action: Action) => Promise<boolean>;
   $: players = session.players.filter(p => !p.left);
   $: banned = session.settings.bannedCountries ?? [];
+  $: locked = busy || !connected;
+  const update = (change: Omit<Extract<Action, { type: 'update-settings' }>, 'type'>) => onaction({ type: 'update-settings', ...change });
 </script>
 
-<section class="phase-heading"><div><span class="eyebrow">THE MEETING POINT</span><h1>THE USUAL <span>SUSPECTS.</span></h1></div><span class="phase-note"><Icon name="clock"/>{session.durationSeconds / 60} minutes on the streets</span></section>
+<section class="phase-heading"><div><span class="eyebrow">THE MEETING POINT</span><h1>THE USUAL <span>SUSPECTS.</span></h1></div><span class="phase-note"><Icon name="clock"/>{formatDuration(session.durationSeconds)} on the streets</span></section>
 <div class="lobby-layout">
   <section class="panel lobby-players">
     <div class="panel-heading"><h2>The curious crew</h2><span class="pill">{players.length} / 12 spotters</span></div>
@@ -25,5 +32,40 @@
     </div>
     <div class="invite-box"><Icon name="users" size={20}/><p>{session.demo ? 'Your simulated crew is ready when you are.' : 'Get everyone in. Then everyone gets a say.'}</p>{#if !session.demo}<button class="button secondary" onclick={oncopy}><Icon name="copy" size={16}/> Copy invite</button>{/if}</div>
   </section>
-  <aside class="briefing panel"><span class="briefing-tab">FIELD BRIEFING</span><div class="briefing-character"><Spotter seed="dispatch-chief" mood="searching"/></div><h2>A perfectly normal<br/>amount of nosy.</h2><ol><li><span>01</span><div><strong>Make the list.</strong><p>Pick things worth spotting.</p></div></li><li><span>02</span><div><strong>Get out there.</strong><p>Save your Street View evidence.</p></div></li><li><span>03</span><div><strong>Make the call.</strong><p>Most accepted matches wins.</p></div></li></ol><span class="briefing-bottom" title={banned.map(countryName).join(', ') || undefined}>{session.settings.proximityEnabled && banned.length ? `RADIO ON · 5 KM · ${banned.length} OFF-LIMITS` : session.settings.proximityEnabled ? 'NEIGHBOURHOOD RADIO ON · 5 KM' : banned.length ? `${banned.length} ${banned.length === 1 ? 'COUNTRY' : 'COUNTRIES'} OFF-LIMITS` : 'NO SEARCH. NO SHORTCUTS.'}</span></aside>
+  <aside class="briefing panel room-rules" aria-labelledby="room-rules-title">
+    <span class="briefing-tab">ROOM RULES</span>
+    <div class="briefing-character"><Spotter seed="dispatch-chief" mood="searching"/></div>
+    <h2 id="room-rules-title">House rules,<br/>agreed together.</h2>
+    <div class="rules-controls">
+      <div class="rules-duration">
+        <label for="lobby-duration">Time on the streets</label>
+        <DurationPicker id="lobby-duration" value={session.durationSeconds} disabled={locked} onchange={durationSeconds => update({ durationSeconds })}/>
+      </div>
+      <label class="room-option"><input type="checkbox" checked={session.settings.proximityEnabled} disabled={locked} onchange={event => update({ proximityEnabled: event.currentTarget.checked })}/><span><strong>Neighbourhood radio</strong><small>Hear when a spotter is within 5 km.</small></span><span class="option-range" aria-hidden="true">5 km</span></label>
+      <CountryPicker selected={banned} disabled={locked} onchange={bannedCountries => update({ bannedCountries })}/>
+    </div>
+    <span class="briefing-bottom">ANYONE CAN EDIT · CHANGES RESET READY</span>
+  </aside>
 </div>
+
+<style>
+  .room-rules h2 { margin-bottom: 12px; }
+  .rules-controls { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+  .rules-controls label:not(.room-option) { margin: 0 0 5px; font-size: 11px; }
+  .rules-controls :global(select), .rules-controls :global(input:not([type='checkbox'])) { height: 40px; font-size: 12px; }
+  .rules-controls :global(.ban-option) { margin: 0; }
+  @media (max-height: 780px) {
+    .room-rules .briefing-character { flex-basis: 90px; }
+    .room-rules h2 { margin-bottom: 8px; }
+    .rules-controls { gap: 6px; }
+    .rules-controls :global(select), .rules-controls :global(input:not([type='checkbox'])) { height: 36px; }
+  }
+  @media (max-height: 650px) { .room-rules .briefing-character, .room-rules h2 { display: none; } }
+  /* The briefing is hidden on narrow screens, but the rules must stay editable. */
+  @media (max-width: 900px) {
+    .lobby-layout { grid-template-rows: minmax(0, 1fr) auto; }
+    .room-rules { display: block; padding: 22px 14px 12px; }
+    .room-rules .briefing-character, .room-rules h2, .room-rules .briefing-bottom { display: none; }
+    .rules-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+  }
+</style>

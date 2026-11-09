@@ -292,3 +292,60 @@ test('maximum crew, long categories, and twelve candidates remain accessible wit
   await page.getByRole('button', { name: 'Leave room', exact: true }).click();
   await assertGameViewport(page);
 });
+
+test('room rules can be changed in the lobby, including a custom duration', async ({ page }) => {
+  await page.goto('/');
+  await page.getByLabel('Your spotter name').fill('Alex');
+  await page.getByLabel('Time on the streets').selectOption('custom');
+  await page.getByLabel('Hours on the streets').fill('2');
+  await page.getByLabel('Minutes on the streets').fill('0');
+  await page.getByLabel('Minutes on the streets').press('Tab');
+  await assertGameViewport(page);
+  await page.locator('form').getByRole('button', { name: 'Create room', exact: true }).click();
+  await expect(page.getByText('2 hours on the streets')).toBeVisible();
+  // A second, idle spotter keeps the lobby open after Alex marks ready.
+  await page.evaluate(() => {
+    const id = location.hash.split('/').at(-1)!;
+    const room: Room = JSON.parse(localStorage.getItem(`sls:room:${id}`)!);
+    room.players.push({ ...room.players[0], id: 'fixture-spotter', name: 'Mika', color: 1, ready: false });
+    room.revision++;
+    localStorage.setItem(`sls:room:${id}`, JSON.stringify(room));
+    window.dispatchEvent(new CustomEvent('sls:changed', { detail: id }));
+  });
+  await expect(page.getByText('Mika')).toBeVisible();
+
+  const stepId = (await state(page)).stepId;
+  await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  await expect.poll(async () => (await state(page)).players[0].ready).toBe(true);
+  await page.getByLabel('Hours on the streets').fill('1');
+  await page.getByLabel('Minutes on the streets').fill('30');
+  await page.getByLabel('Minutes on the streets').press('Tab');
+  await expect(page.getByText('1 h 30 min on the streets')).toBeVisible();
+  await expect.poll(async () => (await state(page)).stepId).not.toBe(stepId);
+  expect((await state(page)).players[0].ready).toBe(false);
+
+  await page.getByLabel('Hours on the streets').fill('99');
+  await page.getByLabel('Hours on the streets').press('Enter');
+  await expect(page.getByText('24 hours on the streets')).toBeVisible();
+  await capture(page, 'lobby-custom-duration');
+  await page.getByLabel('Time on the streets').selectOption('300');
+  await expect(page.getByText('5 minutes on the streets')).toBeVisible();
+
+  await page.getByRole('checkbox', { name: /Neighbourhood radio/ }).check();
+  await expect.poll(async () => (await state(page)).settings.proximityEnabled).toBe(true);
+  await page.getByRole('button', { name: /Off-limits countries/ }).click();
+  await page.getByLabel('Add a country').fill('Germany');
+  await page.getByLabel('Add a country').press('Enter');
+  await page.getByLabel('Add a country').fill('FR');
+  await page.getByLabel('Add a country').press('Enter');
+  // Nothing is sent until the picker closes.
+  expect((await state(page)).settings.bannedCountries).toEqual([]);
+  await page.getByRole('button', { name: 'Done' }).click();
+  await expect.poll(async () => (await state(page)).settings.bannedCountries).toEqual(['DE', 'FR']);
+  await expect(page.getByRole('button', { name: 'Off-limits countries: France, Germany' })).toBeVisible();
+  await assertGameViewport(page);
+  await page.setViewportSize({ width: 800, height: 700 });
+  await expect(page.getByLabel('Time on the streets')).toBeVisible();
+  await expect(page.getByRole('button', { name: /Off-limits countries/ })).toBeVisible();
+  await capture(page, 'lobby-rules');
+});

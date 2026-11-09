@@ -36,6 +36,26 @@ describe('peer progression and findings', () => {
     expect(() => applyAction(r, 'alex', { type: 'ready', stepId: oldStep, ready: true })).toThrow('moved on');
   });
 
+  it('lets any lobby member change the room rules and resets readiness on a change', () => {
+    const r = room();
+    applyAction(r, 'alex', { type: 'ready', stepId: r.stepId, ready: true });
+    const step = r.stepId;
+    const mika = r.players[1].id;
+    applyAction(r, mika, { type: 'update-settings', durationSeconds: 5400, bannedCountries: ['fr', 'DE', 'fr'] });
+    expect(r.durationSeconds).toBe(5400);
+    expect(r.settings).toEqual({ proximityEnabled: false, bannedCountries: ['DE', 'FR'] });
+    expect(r.stepId).not.toBe(step);
+    expect(r.players[0].ready).toBe(false);
+    const unchanged = r.stepId;
+    applyAction(r, 'alex', { type: 'update-settings', bannedCountries: ['DE', 'FR'], durationSeconds: 5400 });
+    expect(r.stepId).toBe(unchanged);
+    expect(() => applyAction(r, 'alex', { type: 'update-settings', durationSeconds: 24 * 3600 + 60 })).toThrow('24 hours');
+    expect(() => applyAction(r, 'alex', { type: 'update-settings', proximityEnabled: true, bannedCountries: ['DEU'] })).toThrow();
+    expect(r.settings.proximityEnabled).toBe(false);
+    readyAll(r);
+    expect(() => applyAction(r, 'alex', { type: 'update-settings', proximityEnabled: true })).toThrow('locked');
+  });
+
   it('invalidates category agreement after an edit and prevents an empty search', () => {
     const r = room();
     readyAll(r);

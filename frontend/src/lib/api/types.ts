@@ -80,6 +80,8 @@ export interface SessionState {
 
 export type Action =
   | { type: 'ready'; stepId: string; ready: boolean }
+  // Lobby only. Omitted fields keep their current value.
+  | { type: 'update-settings'; durationSeconds?: number; proximityEnabled?: boolean; bannedCountries?: string[] }
   | { type: 'add-category'; text: string }
   | { type: 'edit-category'; categoryId: string; text: string }
   | { type: 'delete-category'; categoryId: string }

@@ -20,6 +20,15 @@ pub struct RoomSettings {
     pub banned_countries: Vec<String>,
 }
 
+/// A partial change to the room rules; omitted fields keep their current value.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SettingsUpdate {
+    pub duration_seconds: Option<u64>,
+    pub proximity_enabled: Option<bool>,
+    pub banned_countries: Option<Vec<String>>,
+}
+
 /// Sent over the WebSocket for the most recently reported Street View position.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

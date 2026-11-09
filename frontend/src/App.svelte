@@ -139,7 +139,7 @@
 {#if loading}<main class="loading-page"><span class="spinner"></span><h2>Finding your people…</h2></main>
 {:else if !session}<Home {busy} {roomCode} oncreate={(name, duration, demo, settings) => enter(name, duration, demo, undefined, settings)} onjoin={(code, name) => enter(name, 600, false, code)}/>
 {:else}{#key `${session.id}:${session.meId}`}<MapsSession><main class="game-main phase-{session.phase}">
-  {#if session.phase === 'lobby'}<Lobby {session} oncopy={copyInvite}/>
+  {#if session.phase === 'lobby'}<Lobby {session} {busy} connected={connection === 'connected'} oncopy={copyInvite} onaction={act}/>
   {:else if session.phase === 'categories'}<Categories {session} {busy} onaction={act}/>
   {:else if session.phase === 'searching'}<Search {session} {busy} connected={connection === 'connected'} proximity={proximity?.stepId === session.stepId ? proximity.band : 'inactive'} banned={territory?.stepId === session.stepId ? territory.banned : null} onaction={act}/>
   {:else if session.phase === 'selection'}<Selection {session} {busy} onaction={act}/>

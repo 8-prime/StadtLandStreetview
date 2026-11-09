@@ -20,6 +20,10 @@ function actionRequest(id: string, action: Action) {
   const base = `/sessions/${encodeURIComponent(id)}`;
   switch (action.type) {
     case 'ready': return request(`${base}/ready`, 'PUT', { stepId: action.stepId, ready: action.ready });
+    case 'update-settings': {
+      const { type: _type, ...update } = action;
+      return request(`${base}/settings`, 'PATCH', update);
+    }
     case 'add-category': return request(`${base}/categories`, 'POST', { text: action.text });
     case 'edit-category': return request(`${base}/categories/${encodeURIComponent(action.categoryId)}`, 'PATCH', { text: action.text });
     case 'delete-category': return request(`${base}/categories/${encodeURIComponent(action.categoryId)}`, 'DELETE');

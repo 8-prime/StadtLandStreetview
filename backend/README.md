@@ -129,6 +129,7 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | --- | --- | --- |
 | Create | `start_session(name, duration_sec)` | `SessionMembership { session_id, player_id }` |
 | Create with room options | `start_session_with_settings(name, duration_sec, RoomSettings)` | Same membership; settings default to radio off and no banned countries |
+| Change room rules (lobby) | `update_settings(id, player, SettingsUpdate)` | `()`; partial update, resets readiness when something changes |
 | Join/resume | `join_session(id, name, existing_player)` | Player ID |
 | Leave | `leave_session(id, player)` | `()` |
 | Snapshot | `get_session(id, player)` | Personalized `SessionState` |
@@ -239,7 +240,7 @@ changing evidence clears that player's readiness. Categories are shared and
 editable by any active peer during collection.
 
 Names are trimmed and limited to 1–24 characters, category text to 1–100,
-duration to 60–1200 seconds, and rooms to 12 active players, 12 categories, and
+duration to 60–86400 seconds (1 minute to 24 hours), and rooms to 12 active players, 12 categories, and
 12 candidates per player/category. Viewpoints require a nonempty panorama ID,
 finite coordinates (latitude ±90, longitude ±180), heading in [0, 360), pitch in
 [−90, 90], and zoom in [0, 5]. Unknown viewpoint fields, including the frontend's

@@ -3,34 +3,50 @@
   import Pager from './Pager.svelte';
   import { countryFlag, countryName, searchCountries } from '../api/countries';
 
-  let { selected = $bindable([]), disabled = false }: { selected?: string[]; disabled?: boolean } = $props();
+  let { selected = $bindable([]), disabled = false, onchange }: {
+    selected?: string[];
+    disabled?: boolean;
+    // Called when the dialog closes with a changed list; without it, `selected` updates directly.
+    onchange?: (codes: string[]) => void;
+  } = $props();
   let dialog: HTMLDialogElement;
   let search: HTMLInputElement;
   let query = $state('');
   let page = $state(0);
+  // Edits stay local until the dialog closes, so a shared room gets one update per visit.
+  let draft = $state<string[]>([]);
   const resultLimit = 8;
   const chipsPerPage = 8;
-  let results = $derived(query.trim() ? searchCountries(query, selected).slice(0, resultLimit) : []);
-  let pages = $derived(Math.max(1, Math.ceil(selected.length / chipsPerPage)));
-  let summary = $derived(selected.length ? selected.slice(0, 5).map(countryFlag).join(' ') + (selected.length > 5 ? ` +${selected.length - 5}` : '') : 'None');
+  const byName = (a: string, b: string) => countryName(a).localeCompare(countryName(b), 'en');
+  let results = $derived(query.trim() ? searchCountries(query, draft).slice(0, resultLimit) : []);
+  let pages = $derived(Math.max(1, Math.ceil(draft.length / chipsPerPage)));
+  let sorted = $derived([...selected].sort(byName));
+  let summary = $derived(sorted.length ? sorted.slice(0, 5).map(countryFlag).join(' ') + (sorted.length > 5 ? ` +${sorted.length - 5}` : '') : 'None');
   $effect(() => { if (page >= pages) page = pages - 1; });
 
-  function open() { query = ''; page = 0; dialog.showModal(); search.focus(); }
+  function open() { draft = [...sorted]; query = ''; page = 0; dialog.showModal(); search.focus(); }
+  function close() {
+    const key = (codes: string[]) => [...codes].sort().join();
+    if (key(draft) === key(selected)) return;
+    // A controlled picker shows the new list once the room confirms it.
+    if (onchange) onchange(draft);
+    else selected = draft;
+  }
   function add(code: string) {
-    selected = [...selected, code].sort((a, b) => countryName(a).localeCompare(countryName(b), 'en'));
+    draft = [...draft, code].sort(byName);
     query = '';
-    page = Math.floor(selected.indexOf(code) / chipsPerPage);
+    page = Math.floor(draft.indexOf(code) / chipsPerPage);
     search.focus();
   }
-  function remove(code: string) { selected = selected.filter(value => value !== code); }
+  function remove(code: string) { draft = draft.filter(value => value !== code); }
 </script>
 
-<button type="button" class="room-option ban-option" {disabled} onclick={open} aria-label={`Off-limits countries: ${selected.length ? selected.map(countryName).join(', ') : 'none'}`}>
+<button type="button" class="room-option ban-option" {disabled} onclick={open} aria-label={`Off-limits countries: ${sorted.length ? sorted.map(countryName).join(', ') : 'none'}`}>
   <span><strong>Off-limits countries</strong><small>No starts or evidence there.</small></span>
   <span class="ban-summary" aria-hidden="true">{summary}</span>
 </button>
 
-<dialog bind:this={dialog} class="modal country-modal" aria-labelledby="country-modal-title">
+<dialog bind:this={dialog} class="modal country-modal" aria-labelledby="country-modal-title" onclose={close}>
   <div class="modal-body">
     <button type="button" class="icon-button modal-close" aria-label="Close off-limits countries" onclick={() => dialog.close()}><Icon name="close"/></button>
     <span class="eyebrow">ROOM RULES</span>
@@ -47,16 +63,16 @@
       {/each}
     </div>
     <div class="country-selected">
-      <span class="eyebrow">{selected.length ? `${selected.length} OFF-LIMITS` : 'THE WHOLE WORLD IS OPEN'}</span>
+      <span class="eyebrow">{draft.length ? `${draft.length} OFF-LIMITS` : 'THE WHOLE WORLD IS OPEN'}</span>
       <div class="country-chips">
-        {#each selected.slice(page * chipsPerPage, (page + 1) * chipsPerPage) as code (code)}
+        {#each draft.slice(page * chipsPerPage, (page + 1) * chipsPerPage) as code (code)}
           <span class="saved-chip"><span aria-hidden="true">{countryFlag(code)}</span>{countryName(code)}<button type="button" class="icon-button" aria-label={`Allow ${countryName(code)} again`} onclick={() => remove(code)}><Icon name="close" size={13}/></button></span>
         {/each}
       </div>
       <div class="country-footer">
         <Pager {page} {pages} label="off-limits countries" onpage={value => page = value}/>
         <span class="country-actions">
-          {#if selected.length}<button type="button" class="text-button" onclick={() => { selected = []; page = 0; }}>Clear all</button>{/if}
+          {#if draft.length}<button type="button" class="text-button" onclick={() => { draft = []; page = 0; }}>Clear all</button>{/if}
           <button type="button" class="button primary" onclick={() => dialog.close()}>Done <Icon name="check" size={16}/></button>
         </span>
       </div>

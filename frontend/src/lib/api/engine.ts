@@ -1,3 +1,4 @@
+import { maxDuration, minDuration } from './duration';
 import { defaultSettings, type Action, type Category, type Finding, type Phase, type Player, type ReviewResult, type RoomSettings, type SessionState, type Vote } from './types';
 
 type Position = { lat: number; lng: number };
@@ -137,6 +138,18 @@ export function applyAction(room: Room, playerId: string, action: Action, now = 
     const finding = currentFinding(room);
     if (room.phase === 'review' && finding?.playerId !== playerId) throw new Error('Cast your vote instead of marking yourself ready.');
     player.ready = action.ready;
+  } else if (action.type === 'update-settings') {
+    if (room.phase !== 'lobby') throw new Error('Room rules are locked once the round starts.');
+    const { durationSeconds: duration, proximityEnabled, bannedCountries } = action;
+    if (duration !== undefined && !(Number.isInteger(duration) && duration >= minDuration && duration <= maxDuration)) throw new Error('Search duration must be between 1 minute and 24 hours.');
+    const banned = bannedCountries && [...new Set(bannedCountries.map(code => code.trim().toUpperCase()))].sort();
+    if (banned?.some(code => !/^[A-Z]{2}$/.test(code))) throw new Error('Use two-letter country codes.');
+    const settings = { ...defaultSettings(), ...room.settings };
+    const before = JSON.stringify([room.durationSeconds, settings]);
+    room.durationSeconds = duration ?? room.durationSeconds;
+    room.settings = { proximityEnabled: proximityEnabled ?? settings.proximityEnabled, bannedCountries: banned ?? settings.bannedCountries };
+    // Nobody should be marked ready for rules they have not seen.
+    if (JSON.stringify([room.durationSeconds, room.settings]) !== before) newStep(room, 'lobby');
   } else if (action.type === 'add-category' || action.type === 'edit-category' || action.type === 'delete-category') {
     if (room.phase !== 'categories') throw new Error('Categories are locked for this round.');
     if (action.type !== 'delete-category' && (!action.text.trim() || action.text.trim().length > 100)) throw new Error('Use between 1 and 100 characters.');

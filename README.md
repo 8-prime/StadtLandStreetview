@@ -39,6 +39,10 @@ The game has three main stages:
 2. **Find matching Street View scenes** within a shared time limit, then select final submissions.
 3. **Review and vote** on each finding, then determine the winner.
 
+## Lobby: Room rules
+
+While the crew gathers, anyone can change the room rules: the search time (preset lengths or a custom time up to 24 hours), the **Neighbourhood radio**, and **Off-limits countries**. Any change clears everyone's readiness so nobody starts under rules they haven't seen. The rules lock once everyone is ready.
+
 ## Stage 1: Collect categories
 
 Before searching begins, the players collect a shared list of categories. A category describes something players should try to find in Street View, for example:

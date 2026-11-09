@@ -64,6 +64,10 @@ pub fn router(state: AppState) -> Router {
         .route("/sessions/{session_id}/leave", post(handlers::leave))
         .route("/sessions/{session_id}/ready", put(handlers::ready))
         .route(
+            "/sessions/{session_id}/settings",
+            axum::routing::patch(handlers::update_settings),
+        )
+        .route(
             "/sessions/{session_id}/categories",
             post(handlers::add_category),
         )
