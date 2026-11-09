@@ -1264,3 +1264,56 @@ async fn lobby_settings_can_be_patched_by_any_member() {
     .await;
     assert_eq!(reply.status, StatusCode::CONFLICT);
 }
+
+#[tokio::test]
+async fn a_finished_room_can_restart_in_the_lobby() {
+    let (_, app) = app();
+    let (id, alex) = create(&app, "Alex", None).await;
+    let restart = format!("/api/sessions/{id}/restart");
+    let step = snapshot(&app, &id, &alex).await["stepId"].clone();
+    let reply = request(
+        &app,
+        Method::POST,
+        &restart,
+        Some(&alex),
+        Some(json!({ "stepId": step })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::NO_CONTENT, "already in the lobby");
+    ready_all(&app, &id, &[&alex]).await;
+    let reply = request(
+        &app,
+        Method::POST,
+        &restart,
+        Some(&alex),
+        Some(json!({ "stepId": step })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CONFLICT);
+    request(
+        &app,
+        Method::POST,
+        &format!("/api/sessions/{id}/categories"),
+        Some(&alex),
+        Some(json!({ "text": "Door" })),
+    )
+    .await;
+    // Searching, selection, and an empty review finish the round.
+    for _ in 0..3 {
+        ready_all(&app, &id, &[&alex]).await;
+    }
+    let state = snapshot(&app, &id, &alex).await;
+    assert_eq!(state["phase"], "finished");
+    let reply = request(
+        &app,
+        Method::POST,
+        &restart,
+        Some(&alex),
+        Some(json!({ "stepId": state["stepId"] })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::NO_CONTENT);
+    let state = snapshot(&app, &id, &alex).await;
+    assert_eq!(state["phase"], "lobby");
+    assert_eq!(state["categories"], json!([]));
+}

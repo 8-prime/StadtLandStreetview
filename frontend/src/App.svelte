@@ -384,7 +384,14 @@
                             />
                         {:else if session.phase === "finished"}<Results
                                 {session}
-                                onhome={() => leaveDialog.showModal()}
+                                {busy}
+                                connected={connection === "connected"}
+                                onhome={() =>
+                                    session &&
+                                    act({
+                                        type: "restart",
+                                        stepId: session.stepId,
+                                    })}
                             />{/if}
                         {#if session.phase !== "finished"}<ReadyBar
                                 {session}

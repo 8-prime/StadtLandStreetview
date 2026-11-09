@@ -129,6 +129,7 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | --- | --- | --- |
 | Create | `start_session(name, duration_sec)` | `SessionMembership { session_id, player_id }` |
 | Create with room options | `start_session_with_settings(name, duration_sec, RoomSettings)` | Same membership; settings default to radio off and no banned countries |
+| Restart a finished room | `restart(id, player, step_id)` | `()`; fresh lobby with the same players and rules |
 | Change room rules (lobby) | `update_settings(id, player, SettingsUpdate)` | `()`; partial update, resets readiness when something changes |
 | Join/resume | `join_session(id, name, existing_player)` | Player ID |
 | Leave | `leave_session(id, player)` | `()` |

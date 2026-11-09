@@ -182,6 +182,11 @@ impl SessionManager {
         .await
     }
 
+    pub async fn restart(&self, session_id: &str, player_id: Uuid, step_id: Uuid) -> Result<()> {
+        self.update(session_id, |session, _| session.restart(player_id, step_id))
+            .await
+    }
+
     pub async fn update_settings(
         &self,
         session_id: &str,

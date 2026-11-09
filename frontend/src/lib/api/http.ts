@@ -38,6 +38,8 @@ function actionRequest(id: string, action: Action) {
         stepId: action.stepId,
         ready: action.ready,
       });
+    case "restart":
+      return request(`${base}/restart`, "POST", { stepId: action.stepId });
     case "update-settings": {
       const { type: _type, ...update } = action;
       return request(`${base}/settings`, "PATCH", update);

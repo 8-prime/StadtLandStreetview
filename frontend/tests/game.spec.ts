@@ -101,8 +101,23 @@ test('solo demo runs through selection and automatic voting progression', async 
     await expect(page.getByText('THE GROUP HAS SPOKEN')).toHaveCount(0);
   }
   await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
-  expect(errors).toEqual([]);
   await capture(page, 'results');
+  // Same room, same crew, a fresh round with the rules kept.
+  const room = page.url();
+  await page.getByRole('button', { name: /Back to the meeting point/ }).click();
+  await expect(page.getByRole('heading', { name: 'The curious crew' })).toBeVisible();
+  expect(page.url()).toBe(room);
+  const fresh = await state(page);
+  expect(fresh.phase).toBe('lobby');
+  expect(fresh.categories).toEqual([]);
+  expect(fresh.findings).toEqual([]);
+  expect(fresh.players.every((p: { score: number }) => p.score === 0)).toBe(true);
+  expect(fresh.settings.proximityEnabled).toBe(true);
+  await expect(page.getByRole('checkbox', { name: /Neighbourhood radio/ })).toBeChecked();
+  // The simulated crew plays a second round.
+  await readyAndAdvance(page);
+  await expect(page.getByText('A person walking a dog')).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test('two peers share readiness, category edits reset agreement, and refresh resumes identity', async ({ page, context }) => {

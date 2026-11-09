@@ -4,6 +4,9 @@
     import Avatar from "../lib/components/Avatar.svelte";
     import Pager from "../lib/components/Pager.svelte";
     export let session: SessionState;
+    export let busy = false;
+    export let connected = true;
+    // Returns the whole room to a fresh lobby with the same crew and rules.
     export let onhome: () => void;
     let page = 0;
     const size = 6;
@@ -114,7 +117,10 @@
     <span
         ><Icon name="eye" size={21} /> YOU’LL NEVER LOOK AT A PARKED CAR THE SAME
         WAY.</span
-    ><button class="button primary" onclick={onhome}
+    ><button
+        class="button primary"
+        disabled={busy || !connected}
+        onclick={onhome}
         >Back to the meeting point <Icon name="arrow" /></button
     >
 </footer>

@@ -1200,3 +1200,76 @@ fn custom_search_durations_reach_the_deadline() {
     ready_all(&mut session);
     assert_eq!(session.search_ends_at, Some(1000 + 90 * 60 * 1000));
 }
+
+#[test]
+fn a_finished_room_restarts_as_a_fresh_lobby_with_the_same_crew_and_rules() {
+    let (mut session, players) = room(3);
+    session
+        .update_settings(
+            players[0],
+            SettingsUpdate {
+                duration_seconds: Some(5400),
+                proximity_enabled: Some(true),
+                banned_countries: Some(vec!["FR".into()]),
+            },
+        )
+        .unwrap();
+    let settings = session.settings.clone();
+    ready_all(&mut session);
+    let category = session.add_category(players[0], "Door".into()).unwrap();
+    ready_all(&mut session);
+    session
+        .add_finding(players[0], category, view(), at(2000))
+        .unwrap();
+    // Restarting is only for finished rounds.
+    assert!(matches!(
+        session.restart(players[0], session.step_id),
+        Err(SessionError::Conflict(_))
+    ));
+    ready_all(&mut session);
+    ready_all(&mut session);
+    let item = session.review_queue[0].id;
+    for voter in &players[1..] {
+        session.vote(*voter, item, Vote::Accept, at(3000)).unwrap();
+    }
+    let step = session.step_id;
+    session.ready(players[0], step, true, at(3000)).unwrap();
+    session.leave(players[2], at(3000)).unwrap();
+    assert_eq!(session.phase, Phase::Finished);
+    assert_eq!(session.players[&players[0]].score, 1);
+
+    let finished = session.step_id;
+    assert!(session.restart(players[1], Uuid::new_v4()).is_err());
+    assert_eq!(session.phase, Phase::Finished);
+    session.restart(players[1], finished).unwrap();
+    assert_eq!(session.phase, Phase::Lobby);
+    assert_ne!(session.step_id, finished);
+    // A duplicate request for the same finished round changes nothing.
+    let lobby = session.step_id;
+    session.restart(players[0], finished).unwrap();
+    assert_eq!(session.step_id, lobby);
+
+    let state = session.snapshot(players[0], at(4000)).unwrap();
+    assert!(state.categories.is_empty() && state.own_findings.is_empty());
+    assert!(state.selections.is_empty() && state.results.is_empty());
+    assert!(state.review.is_none() && state.start.is_none());
+    assert!(state.search_ends_at.is_none());
+    assert!(state.players.iter().all(|p| p.score == 0 && !p.ready));
+    assert!(state.players[2].left);
+    assert_eq!(state.duration_seconds, 5400);
+    assert_eq!(state.settings, settings);
+    assert!(session.restart(players[2], finished).is_err());
+
+    // The next round plays normally.
+    ready_all(&mut session);
+    session.add_category(players[1], "Bench".into()).unwrap();
+    ready_all(&mut session);
+    assert_eq!(session.phase, Phase::Searching);
+    assert!(
+        session
+            .snapshot(players[1], at(5000))
+            .unwrap()
+            .start
+            .is_some()
+    );
+}

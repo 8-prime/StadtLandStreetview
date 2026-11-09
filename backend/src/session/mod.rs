@@ -289,6 +289,36 @@ impl Session {
         Ok(())
     }
 
+    /// Returns a finished room to a fresh lobby. Players, colors, and room rules stay;
+    /// everything from the finished round is cleared. A repeat request for the same
+    /// finished round is a no-op once the room is back in the lobby.
+    fn restart(&mut self, player_id: Uuid, step_id: Uuid) -> Result<()> {
+        self.active_player(player_id)?;
+        if self.phase == Phase::Lobby {
+            return Ok(());
+        }
+        if self.phase != Phase::Finished || self.step_id != step_id {
+            return Err(SessionError::Conflict(
+                "The group has moved on. Please check the current step.",
+            ));
+        }
+        for player in self.players.values_mut() {
+            player.findings.clear();
+            player.selections.clear();
+            player.score = 0;
+            player.start = None;
+        }
+        self.categories.clear();
+        self.category_order.clear();
+        self.search_ends_at = None;
+        self.review_queue.clear();
+        self.review_index = 0;
+        self.votes.clear();
+        self.results.clear();
+        self.new_step(Phase::Lobby);
+        Ok(())
+    }
+
     fn add_category(&mut self, player_id: Uuid, name: String) -> Result<Uuid> {
         self.active_player(player_id)?;
         self.require_phase(&[Phase::Categories])?;

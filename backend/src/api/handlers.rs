@@ -132,6 +132,24 @@ pub(super) async fn ready(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct RestartRequest {
+    step_id: Uuid,
+}
+
+pub(super) async fn restart(
+    State(state): State<AppState>,
+    member: Member,
+    ApiJson(info): ApiJson<RestartRequest>,
+) -> ApiResult<StatusCode> {
+    state
+        .sessions
+        .restart(&member.session_id, member.player_id, info.step_id)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
 pub(super) async fn update_settings(
     State(state): State<AppState>,
     member: Member,

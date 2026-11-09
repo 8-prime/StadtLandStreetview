@@ -483,6 +483,59 @@ describe("peer progression and findings", () => {
     expect(r.phase).toBe("finished");
     expect(r.results).toEqual([]);
   });
+
+  it("restarts a finished round as a fresh lobby with the same crew and rules", () => {
+    const r = room();
+    applyAction(r, "alex", {
+      type: "update-settings",
+      durationSeconds: 5400,
+      bannedCountries: ["FR"],
+    });
+    expect(() =>
+      applyAction(r, "alex", { type: "restart", stepId: r.stepId }),
+    ).not.toThrow();
+    expect(r.phase).toBe("lobby");
+    readyAll(r);
+    readyAll(r);
+    expect(r.phase).toBe("searching");
+    expect(() =>
+      applyAction(r, "alex", { type: "restart", stepId: r.stepId }, 2000),
+    ).toThrow("moved on");
+    applyAction(
+      r,
+      "alex",
+      { type: "save-finding", categoryId: r.categories[0].id, view: demoView() },
+      2000,
+    );
+    tick(r, 1000 + 5400 * 1000);
+    readyAll(r);
+    while (r.phase === "review") {
+      const finding = currentFinding(r)!;
+      for (const p of r.players)
+        if (p.id !== finding.playerId)
+          applyAction(r, p.id, { type: "vote", itemId: finding.id, vote: "accept" });
+      applyAction(r, finding.playerId, { type: "ready", stepId: r.stepId, ready: true });
+    }
+    expect(r.phase).toBe("finished");
+    expect(r.players.some((p) => p.score > 0)).toBe(true);
+    const finished = r.stepId;
+    const mika = r.players[1].id;
+    applyAction(r, mika, { type: "restart", stepId: finished });
+    // A duplicate click from another player is harmless.
+    const lobby = r.stepId;
+    applyAction(r, "alex", { type: "restart", stepId: finished });
+    expect(r.stepId).toBe(lobby);
+    const state = snapshot(r, "alex");
+    expect(state.phase).toBe("lobby");
+    expect(state.players.map((p) => p.score)).toEqual([0, 0, 0]);
+    expect(state.players.every((p) => !p.ready)).toBe(true);
+    expect(state.categories).toEqual([]);
+    expect(state.ownFindings).toEqual([]);
+    expect(state.results).toEqual([]);
+    expect(state.searchEndsAt).toBeNull();
+    expect(state.durationSeconds).toBe(5400);
+    expect(state.settings.bannedCountries).toEqual(["FR"]);
+  });
 });
 
 describe("search starts", () => {

@@ -251,6 +251,24 @@ export function applyAction(
     if (room.phase === "review" && finding?.playerId !== playerId)
       throw new Error("Cast your vote instead of marking yourself ready.");
     player.ready = action.ready;
+  } else if (action.type === "restart") {
+    // A repeat request for the same finished round is harmless once back in the lobby.
+    if (room.phase === "lobby") return;
+    if (room.phase !== "finished" || room.stepId !== action.stepId)
+      throw new Error("The group has moved on. Please check the current step.");
+    Object.assign(room, {
+      searchEndsAt: null,
+      starts: undefined,
+      categories: [],
+      findings: [],
+      selections: {},
+      queue: [],
+      reviewIndex: 0,
+      votes: {},
+      results: [],
+    });
+    room.players.forEach((p) => (p.score = 0));
+    newStep(room, "lobby");
   } else if (action.type === "update-settings") {
     if (room.phase !== "lobby")
       throw new Error("Room rules are locked once the round starts.");

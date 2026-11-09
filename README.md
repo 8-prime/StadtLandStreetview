@@ -97,6 +97,8 @@ Once all findings have been reviewed, count each player's accepted matches acros
 
 The initial UI presents tied leaders as joint winners.
 
+**Back to the meeting point** on the results screen takes the whole crew back to the lobby of the same room for another round. Players and room rules stay; categories, findings, and scores start fresh.
+
 ## Peer-based progression
 
 There is no host controlling progression. During setup, searching, and final selection, each player can set or unset their readiness for the current step. Once all active members are ready, the game advances and resets readiness. Searching also ends automatically at its shared deadline. During review, voters are automatically ready after casting a vote, while the finding's owner confirms readiness separately.

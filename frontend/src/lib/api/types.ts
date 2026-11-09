@@ -100,6 +100,8 @@ export interface SessionState {
 
 export type Action =
   | { type: "ready"; stepId: string; ready: boolean }
+  // Finished rounds only: back to a fresh lobby with the same crew and rules.
+  | { type: "restart"; stepId: string }
   // Lobby only. Omitted fields keep their current value.
   | {
       type: "update-settings";

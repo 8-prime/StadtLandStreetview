@@ -20,6 +20,7 @@ All paths below are relative to `/api`.
 | Method | Path | Request / response |
 | --- | --- | --- |
 | POST | `/sessions` | `{ name, durationSeconds, settings?: { proximityEnabled?: boolean, bannedCountries?: string[] } }` → `{ id }`; establish membership; radio defaults off, no banned countries |
+| POST | `/sessions/{sessionId}/restart` | `{ stepId }` of the finished step; return the room to a fresh lobby |
 | PATCH | `/sessions/{sessionId}/settings` | `{ durationSeconds?, proximityEnabled?, bannedCountries? }`; lobby only, any member; omitted fields are unchanged |
 | POST | `/sessions/{sessionId}/join` | `{ name }`; establish or resume membership |
 | POST | `/sessions/{sessionId}/leave` | Explicitly leave; preserve submissions and scores |
@@ -138,6 +139,7 @@ Positions expire after 15 seconds without an update, are cleared on disconnect/l
 3. Deadline reached or all active members ready during searching → final selection. Search readiness is reversible until everyone is ready; no findings are required to mark done.
 4. All ready after selection → first review item, or finished if nobody submitted a finding.
 5. All eligible voters have voted and the finding's owner is ready (unless they left) → calculate the result, award any point, and immediately open the next item, or finish after the last item. There is no intermediate result-reveal step.
+6. Any member can restart a finished room with `POST /restart`. The room returns to the lobby with the same players, colors, duration, and settings. Categories, findings, selections, starts, votes, results, and scores are cleared, and readiness resets with a new `stepId`. Departed players stay departed. A repeat request while already in the lobby is a no-op; otherwise a stale `stepId` or an unfinished round returns `409`.
 
 Reset readiness and assign a new `stepId` at each transition. A category edit or membership change during setup also invalidates readiness and should issue a new `stepId`. Reject stale readiness requests; do not apply them to a newer step. Readiness requests set a value rather than toggling it, making retries idempotent.
 
