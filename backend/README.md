@@ -128,7 +128,7 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | API operation | Manager method | Result |
 | --- | --- | --- |
 | Create | `start_session(name, duration_sec)` | `SessionMembership { session_id, player_id }` |
-| Create with room options | `start_session_with_settings(name, duration_sec, RoomSettings)` | Same membership; settings default to radio off |
+| Create with room options | `start_session_with_settings(name, duration_sec, RoomSettings)` | Same membership; settings default to radio off and no banned countries |
 | Join/resume | `join_session(id, name, existing_player)` | Player ID |
 | Leave | `leave_session(id, player)` | `()` |
 | Snapshot | `get_session(id, player)` | Personalized `SessionState` |
@@ -142,7 +142,7 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | Vote | `vote(id, player, item, Vote::Accept / Vote::Reject)` | `()` |
 | Open WebSocket | `connect(id, player)` | `SessionConnection { connection_id, updates }` |
 | Close WebSocket | `disconnect(id, player, connection_id)` | `()` |
-| Street View presence | `report_position(id, player, connection_id, step_id, position)` | `()`; separate from game revisions |
+| Street View presence | `report_position(id, player, connection_id, step_id, position)` | `TerritoryState { step_id, banned }`; separate from game revisions |
 | Personalized radio | `proximity(id, player)` | Optional `{ stepId, band }`; no peer coordinates |
 
 The creation `name` is the player's display name. Creation generates a unique
@@ -200,6 +200,31 @@ only when it changes. Nearby means within 5 km; very close means within 250 m.
 Presence is held per connection, expires after 15 seconds, and is cleared at phase
 transitions. These updates never increment game revisions, broadcast snapshots,
 or call external map services. See the [wire protocol](../docs/api.md#optional-neighbourhood-radio).
+
+Rooms with off-limits countries use the same `position` frames, even with the radio
+off. The receive loop looks up each accepted position offline and sends a `territory`
+frame only when the result changes. See [off-limits countries](../docs/api.md#off-limits-countries-and-search-starts).
+
+## Geography data
+
+Both lookups run offline in `src/session/geography.rs`; neither calls Google.
+
+- **Country lookup** uses the `country-boundaries` crate and its bundled 180×90
+  raster of OpenStreetMap boundaries (ODbL, © OpenStreetMap contributors). Results
+  are reliable on land, which is where panoramas are. `add_finding` rejects views
+  in a banned country with `403`.
+- **Search starts** come from `data/start-points.csv` (`country,lat,lng`), compiled
+  into the executable. When searching begins, each active player is assigned a start:
+  a random allowed country, then a random town in it. Countries do not repeat until
+  every allowed country has been used, and players share a town only if necessary.
+  Rooms cannot ban every country that has start points.
+
+Regenerate the start points from GeoNames with `python3 -I scripts/start_points.py`.
+By default these are unverified town centres in countries with broad Street View
+coverage; the browser opens the nearest outdoor panorama within 5 km. For exact
+panorama locations, run with `--verify` and a key in `SLS_STREETVIEW_KEY` that
+allows the Street View Static API. That uses the metadata endpoint, which Google
+does not charge for, once per town, at generation time only.
 
 ## Rules and limits
 

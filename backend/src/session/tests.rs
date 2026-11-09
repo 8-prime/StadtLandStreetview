@@ -1062,3 +1062,55 @@ async fn manager_methods_support_the_full_api_action_sequence() {
     assert!(finished.players[1].left);
     assert_eq!(finished.results.len(), 1);
 }
+
+fn banned_room(count: usize, banned: &[&str]) -> (Session, Vec<Uuid>, Uuid) {
+    let (mut session, players) = room(count);
+    session.settings.banned_countries = banned.iter().map(|code| (*code).to_owned()).collect();
+    ready_all(&mut session);
+    let category = session.add_category(players[0], "Door".into()).unwrap();
+    ready_all(&mut session);
+    assert_eq!(session.phase, Phase::Searching);
+    (session, players, category)
+}
+
+#[test]
+fn each_player_gets_a_private_random_start_outside_banned_countries() {
+    let (session, players) = room(3);
+    assert!(
+        session
+            .snapshot(players[0], at(1000))
+            .unwrap()
+            .start
+            .is_none()
+    );
+    let (session, players, _) = banned_room(3, &["DE", "FR"]);
+    let starts = players
+        .iter()
+        .map(|id| session.snapshot(*id, at(1000)).unwrap().start.unwrap())
+        .collect::<Vec<_>>();
+    for start in &starts {
+        assert!(geography::banned_country(*start, &session.settings.banned_countries).is_none());
+    }
+    assert!(starts[0] != starts[1] && starts[1] != starts[2] && starts[0] != starts[2]);
+    // Snapshots expose only the requesting player's start.
+    let snapshot = serde_json::to_value(session.snapshot(players[0], at(1000)).unwrap()).unwrap();
+    assert_eq!(snapshot["start"]["lat"], json!(starts[0].lat));
+    assert!(!snapshot.to_string().contains(&starts[1].lat.to_string()));
+}
+
+#[test]
+fn findings_in_banned_countries_are_rejected() {
+    let (mut session, players, category) = banned_room(1, &["DE"]);
+    assert!(matches!(
+        session.add_finding(players[0], category, view(), at(1000)),
+        Err(SessionError::Forbidden(_))
+    ));
+    let mut paris = view();
+    paris.position = Position {
+        lat: 48.8566,
+        lng: 2.3522,
+    };
+    session
+        .add_finding(players[0], category, paris, at(1000))
+        .unwrap();
+}

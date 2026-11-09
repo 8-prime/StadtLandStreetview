@@ -9,6 +9,7 @@
   export let explore = false;
   export let demo = false;
   export let view: Viewpoint | null = null;
+  export let start: { lat: number; lng: number } | null = null;
   export let onview: (view: Viewpoint | null) => void = () => {};
 
   let element: HTMLDivElement;
@@ -69,7 +70,7 @@
     } else {
       void loadMaps().then(() => {
         if (disposed || generation !== lifecycle) return;
-        const viewer = maps.get(explore);
+        const viewer = maps.get(explore, start);
         canvas = viewer.element;
         element.append(canvas);
         map = viewer.map;

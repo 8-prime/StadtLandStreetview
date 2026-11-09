@@ -22,7 +22,7 @@ use super::{
     auth::Member,
     error::{ApiError, ApiResult},
 };
-use crate::session::{Position, SessionConnection, SessionEvent};
+use crate::session::{Position, SessionConnection, SessionEvent, TerritoryState};
 
 #[derive(Deserialize)]
 #[serde(
@@ -87,10 +87,11 @@ async fn serve(socket: WebSocket, state: AppState, member: Member) {
     } = connection;
     let (mut outgoing, incoming) = socket.split();
     let (pongs, last_pong) = watch::channel(Instant::now());
+    let (territory, territory_updates) = watch::channel(None);
     let mut shutdown = state.shutdown.subscribe();
     {
-        let send = send_updates(&mut outgoing, updates, &state, &member);
-        let receive = receive_messages(incoming, pongs, &state, &member, connection_id);
+        let send = send_updates(&mut outgoing, updates, territory_updates, &state, &member);
+        let receive = receive_messages(incoming, pongs, territory, &state, &member, connection_id);
         let heartbeat = heartbeat_expired(last_pong, state.socket_settings.heartbeat_timeout);
         let stop = async {
             if !*shutdown.borrow() {
@@ -119,6 +120,7 @@ async fn serve(socket: WebSocket, state: AppState, member: Member) {
 async fn send_updates(
     outgoing: &mut SplitSink<WebSocket, Message>,
     mut updates: broadcast::Receiver<SessionEvent>,
+    mut territory: watch::Receiver<Option<TerritoryState>>,
     state: &AppState,
     member: &Member,
 ) {
@@ -150,6 +152,11 @@ async fn send_updates(
                 Message::Text(payload.into())
             }
             _ = ping.tick() => Message::Ping(Default::default()),
+            changed = territory.changed() => {
+                if changed.is_err() { break; }
+                let Some(territory) = territory.borrow_and_update().clone() else { continue; };
+                Message::Text(serde_json::json!({ "type": "territory", "stepId": territory.step_id, "banned": territory.banned }).to_string().into())
+            }
             _ = proximity_tick.tick() => {
                 let Ok(proximity) = state.sessions.proximity(&member.session_id, member.player_id).await else { break; };
                 if proximity == last_proximity { continue; }
@@ -170,6 +177,7 @@ async fn send_updates(
 async fn receive_messages(
     mut incoming: SplitStream<WebSocket>,
     pongs: watch::Sender<Instant>,
+    territory: watch::Sender<Option<TerritoryState>>,
     state: &AppState,
     member: &Member,
     connection_id: uuid::Uuid,
@@ -196,7 +204,7 @@ async fn receive_messages(
                     if position.is_some() {
                         last_position = Some(now);
                     }
-                    let _ = state
+                    if let Ok(report) = state
                         .sessions
                         .report_position(
                             &member.session_id,
@@ -205,7 +213,15 @@ async fn receive_messages(
                             step_id,
                             position,
                         )
-                        .await;
+                        .await
+                    {
+                        // Only changes reach the client; repeated stationary reports stay silent.
+                        territory.send_if_modified(|current| {
+                            let changed = current.as_ref() != Some(&report);
+                            *current = Some(report);
+                            changed
+                        });
+                    }
                 }
             }
             // Axum handles protocol Ping replies. Game actions use authenticated HTTP.

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { api, mockMode } from './lib/api';
-  import type { Action, Connection, ProximityState, RoomSettings, SessionState } from './lib/api/types';
+  import { defaultSettings, type Action, type Connection, type ProximityState, type RoomSettings, type SessionState, type TerritoryState } from './lib/api/types';
   import Icon from './lib/components/Icon.svelte';
   import ReadyBar from './lib/components/ReadyBar.svelte';
   import GameLogo from './lib/components/GameLogo.svelte';
@@ -24,6 +24,7 @@
   let notice = $state('');
   let connection = $state<Connection>('connecting');
   let proximity = $state<ProximityState | null>(null);
+  let territory = $state<TerritoryState | null>(null);
   let showRules = $state(false);
   let rulesPage = $state(0);
   const rules = [
@@ -62,6 +63,7 @@
     unsubscribe = undefined;
     session = null;
     proximity = null;
+    territory = null;
     error = '';
     const match = location.hash.match(/^#\/room\/([A-Za-z0-9_-]{1,64})$/);
     roomCode = match?.[1] ?? '';
@@ -72,11 +74,11 @@
       const state = await api.get(id);
       if (version !== routeVersion) return;
       receive(state);
-      unsubscribe = api.subscribe(id, receive, value => { connection = value; if (value !== 'connected') proximity = null; }, message => error = message, value => { if (version === routeVersion) proximity = value; });
+      unsubscribe = api.subscribe(id, receive, value => { connection = value; if (value !== 'connected') { proximity = null; territory = null; } }, message => error = message, value => { if (version === routeVersion) proximity = value; }, value => { if (version === routeVersion) territory = value; });
     } catch { /* A shared room link opens the join form until identity is established. */ }
     finally { if (version === routeVersion) loading = false; }
   }
-  async function enter(name: string, duration: number, demo: boolean, id?: string, settings: RoomSettings = { proximityEnabled: false }) {
+  async function enter(name: string, duration: number, demo: boolean, id?: string, settings: RoomSettings = defaultSettings()) {
     if (!name.trim() || busy) return;
     busy = true; error = '';
     try {
@@ -139,7 +141,7 @@
 {:else}{#key `${session.id}:${session.meId}`}<MapsSession><main class="game-main phase-{session.phase}">
   {#if session.phase === 'lobby'}<Lobby {session} oncopy={copyInvite}/>
   {:else if session.phase === 'categories'}<Categories {session} {busy} onaction={act}/>
-  {:else if session.phase === 'searching'}<Search {session} {busy} connected={connection === 'connected'} proximity={proximity?.stepId === session.stepId ? proximity.band : 'inactive'} onaction={act}/>
+  {:else if session.phase === 'searching'}<Search {session} {busy} connected={connection === 'connected'} proximity={proximity?.stepId === session.stepId ? proximity.band : 'inactive'} banned={territory?.stepId === session.stepId ? territory.banned : null} onaction={act}/>
   {:else if session.phase === 'selection'}<Selection {session} {busy} onaction={act}/>
   {:else if session.phase === 'review' && session.review}<Review {session} {busy} onaction={act}/>
   {:else if session.phase === 'finished'}<Results {session} onhome={() => leaveDialog.showModal()}/>{/if}

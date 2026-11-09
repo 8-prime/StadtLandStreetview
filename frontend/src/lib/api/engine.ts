@@ -1,4 +1,6 @@
-import type { Action, Category, Finding, Phase, Player, ReviewResult, RoomSettings, SessionState, Vote } from './types';
+import { defaultSettings, type Action, type Category, type Finding, type Phase, type Player, type ReviewResult, type RoomSettings, type SessionState, type Vote } from './types';
+
+type Position = { lat: number; lng: number };
 
 export interface Room {
   id: string;
@@ -9,6 +11,7 @@ export interface Room {
   settings: RoomSettings;
   durationSeconds: number;
   searchEndsAt: number | null;
+  starts?: Record<string, Position>;
   players: (Player & { bot: boolean; lastSeen: number })[];
   categories: Category[];
   findings: Finding[];
@@ -20,9 +23,25 @@ export interface Room {
 }
 
 export const uid = () => crypto.randomUUID();
+// The local prototype has no country boundaries; the server uses a generated dataset.
+const localStarts: [string, number, number][] = [
+  ['DE', 52.52, 13.405], ['FR', 48.8566, 2.3522], ['GB', 51.5072, -0.1276], ['IT', 41.8933, 12.4829],
+  ['JP', 35.6812, 139.7671], ['US', 40.7128, -74.006], ['BR', -22.9068, -43.1729], ['AU', -33.8688, 151.2093],
+  ['ZA', -33.9249, 18.4241], ['CA', 43.6532, -79.3832], ['MX', 19.4326, -99.1332], ['TH', 13.7563, 100.5018],
+];
+
+export function randomStarts(count: number, banned: readonly string[] = [], random = Math.random): Position[] {
+  const pool = localStarts.filter(([country]) => !banned.includes(country));
+  const order = pool.map(start => ({ start, key: random() })).sort((a, b) => a.key - b.key);
+  return Array.from({ length: pool.length ? count : 0 }, (_, i) => {
+    const [, lat, lng] = order[i % order.length].start;
+    return { lat, lng };
+  });
+}
+
 export const demoView = (scene = 0) => ({ panoramaId: `demo-${scene}`, position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1, demoScene: scene });
 
-export function createRoom(id: string, name: string, playerId: string, durationSeconds: number, demo: boolean, settings: RoomSettings = { proximityEnabled: false }): Room {
+export function createRoom(id: string, name: string, playerId: string, durationSeconds: number, demo: boolean, settings: RoomSettings = defaultSettings()): Room {
   const names = demo ? [name, 'Mika', 'Jules'] : [name];
   return {
     id, revision: 0, stepId: uid(), phase: 'lobby', demo, durationSeconds, settings,
@@ -72,6 +91,11 @@ function advance(room: Room, now: number) {
     if (!room.categories.length) throw new Error('Add at least one category before starting.');
     newStep(room, 'searching');
     room.searchEndsAt = now + room.durationSeconds * 1000;
+    if (!room.demo) {
+      const players = room.players.filter(p => !p.left);
+      const starts = randomStarts(players.length, room.settings?.bannedCountries);
+      room.starts = Object.fromEntries(starts.map((start, i) => [players[i].id, start]));
+    }
     if (room.demo) {
       room.players.filter(p => p.bot).forEach((p, i) => room.categories.forEach((c, j) => {
         room.findings.push({ id: uid(), categoryId: c.id, playerId: p.id, view: demoView((i + j + 1) % 3), createdAt: now });
@@ -177,7 +201,8 @@ export function snapshot(room: Room, meId: string): SessionState {
   const finding = currentFinding(room);
   return structuredClone({
     id: room.id, revision: room.revision, stepId: room.stepId, phase: room.phase, meId,
-    demo: room.demo, settings: room.settings ?? { proximityEnabled: false }, durationSeconds: room.durationSeconds, serverTime: Date.now(), searchEndsAt: room.searchEndsAt,
+    demo: room.demo, settings: { ...defaultSettings(), ...room.settings }, durationSeconds: room.durationSeconds, serverTime: Date.now(), searchEndsAt: room.searchEndsAt,
+    start: room.starts?.[meId] ?? null,
     players: room.players.map(({ bot: _bot, lastSeen: _seen, ...p }) => p), categories: room.categories,
     ownFindings: room.findings.filter(f => f.playerId === meId), selections: room.selections[meId] ?? {},
     review: room.phase === 'review' && finding ? {

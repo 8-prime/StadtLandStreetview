@@ -23,6 +23,7 @@ async function mockMaps(page: Page) {
     const stats = {
       maps: 0, panoramas: 0, cleared: 0, unbound: 0,
       options: {} as Record<string, unknown>, panoCalls: [] as string[],
+      lookups: [] as { lat: number; lng: number }[],
     };
     const current = {
       visible: false, status: 'OK', panoramaId: 'panorama-1',
@@ -80,6 +81,15 @@ async function mockMaps(page: Page) {
       MapTypeControlStyle: { HORIZONTAL_BAR: 1 },
       ControlPosition: { TOP_RIGHT: 3 },
       StreetViewStatus: { OK: 'OK', ZERO_RESULTS: 'ZERO_RESULTS' },
+      StreetViewPreference: { NEAREST: 'nearest' },
+      StreetViewSource: { GOOGLE: 'google', OUTDOOR: 'outdoor' },
+      // No nearby coverage, so tests keep starting on the map as before.
+      StreetViewService: class {
+        getPanorama(request: { location: { lat: number; lng: number } }) {
+          stats.lookups.push(request.location);
+          return Promise.reject(new Error('ZERO_RESULTS'));
+        }
+      },
       event: {
         trigger() {},
         clearInstanceListeners(target: unknown) {
@@ -101,6 +111,8 @@ async function startSearch(page: Page, navigate = true) {
   await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
   await page.getByLabel('New category').fill('A blue door');
   await page.getByRole('button', { name: 'Add category', exact: true }).click();
+  // The field clears after the save completes; typing earlier would be erased.
+  await expect(page.getByLabel('New category')).toHaveValue('');
   await page.getByLabel('New category').fill('A bicycle');
   await page.getByRole('button', { name: 'Add category', exact: true }).click();
   await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
@@ -116,7 +128,7 @@ async function stats(page: Page) {
     window.dispatchEvent(new Event('test:maps-stats'));
     return (window as unknown as { mapsStats: {
       maps: number; panoramas: number; cleared: number; unbound: number; listeners: number;
-      options: Record<string, unknown>; panoCalls: string[];
+      options: Record<string, unknown>; panoCalls: string[]; lookups: { lat: number; lng: number }[];
       current: { panoramaId: string; visible: boolean; heading: number; pitch: number; zoom: number };
     } }).mapsStats;
   });
@@ -137,6 +149,13 @@ async function endSearch(page: Page, addEmptyCategory = false) {
 test('saving follows late Street View positions, navigation, and visibility', async ({ page }) => {
   await startSearch(page);
   await expect(page.getByRole('status', { name: 'Neighbourhood radio' })).toHaveCount(0);
+  // One nearest-panorama lookup at this player's random start, never per move.
+  const start = await page.evaluate(() => {
+    const id = location.hash.split('/').at(-1)!;
+    const room: Room = JSON.parse(localStorage.getItem(`sls:room:${id}`)!);
+    return Object.values(room.starts!)[0];
+  });
+  await expect.poll(async () => (await stats(page)).lookups).toEqual([start]);
 
   const save = page.getByRole('button', { name: /Save view/ });
   const findings = () => page.evaluate(() => {

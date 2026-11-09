@@ -22,12 +22,16 @@ it('handles proximity messages without fetching game snapshots and reports only 
   vi.stubGlobal('WebSocket', FakeSocket);
   vi.stubGlobal('location', { href: 'http://localhost/' });
   const proximity = vi.fn();
-  const unsubscribe = httpApi.subscribe('ROOM', vi.fn(), vi.fn(), vi.fn(), proximity);
+  const territory = vi.fn();
+  const unsubscribe = httpApi.subscribe('ROOM', vi.fn(), vi.fn(), vi.fn(), proximity, territory);
   try {
     await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     const socket = FakeSocket.current;
     socket.onmessage?.({ data: JSON.stringify({ type: 'proximity', stepId: 'search-step', band: 'nearby' }) });
     expect(proximity).toHaveBeenCalledWith({ stepId: 'search-step', band: 'nearby' });
+    socket.onmessage?.({ data: JSON.stringify({ type: 'territory', stepId: 'search-step', banned: 'DE' }) });
+    socket.onmessage?.({ data: JSON.stringify({ type: 'territory', stepId: 'search-step', banned: null }) });
+    expect(territory.mock.calls).toEqual([[{ stepId: 'search-step', banned: 'DE' }], [{ stepId: 'search-step', banned: null }]]);
     expect(fetch).toHaveBeenCalledTimes(1);
     httpApi.reportPosition('ROOM', { stepId: 'search-step', position: { lat: 52.52, lng: 13.405 } });
     expect(JSON.parse(socket.send.mock.calls[0][0])).toEqual({ type: 'position', stepId: 'search-step', position: { lat: 52.52, lng: 13.405 } });

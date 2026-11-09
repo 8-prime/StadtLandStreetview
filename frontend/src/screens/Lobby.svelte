@@ -1,11 +1,13 @@
 <script lang="ts">
   import type { SessionState } from '../lib/api/types';
+  import { countryName } from '../lib/api/countries';
   import Avatar from '../lib/components/Avatar.svelte';
   import Icon from '../lib/components/Icon.svelte';
   import Spotter from '../lib/components/Spotter.svelte';
   export let session: SessionState;
   export let oncopy: () => void;
   $: players = session.players.filter(p => !p.left);
+  $: banned = session.settings.bannedCountries ?? [];
 </script>
 
 <section class="phase-heading"><div><span class="eyebrow">THE MEETING POINT</span><h1>THE USUAL <span>SUSPECTS.</span></h1></div><span class="phase-note"><Icon name="clock"/>{session.durationSeconds / 60} minutes on the streets</span></section>
@@ -23,5 +25,5 @@
     </div>
     <div class="invite-box"><Icon name="users" size={20}/><p>{session.demo ? 'Your simulated crew is ready when you are.' : 'Get everyone in. Then everyone gets a say.'}</p>{#if !session.demo}<button class="button secondary" onclick={oncopy}><Icon name="copy" size={16}/> Copy invite</button>{/if}</div>
   </section>
-  <aside class="briefing panel"><span class="briefing-tab">FIELD BRIEFING</span><div class="briefing-character"><Spotter seed="dispatch-chief" mood="searching"/></div><h2>A perfectly normal<br/>amount of nosy.</h2><ol><li><span>01</span><div><strong>Make the list.</strong><p>Pick things worth spotting.</p></div></li><li><span>02</span><div><strong>Get out there.</strong><p>Save your Street View evidence.</p></div></li><li><span>03</span><div><strong>Make the call.</strong><p>Most accepted matches wins.</p></div></li></ol><span class="briefing-bottom">{session.settings.proximityEnabled ? 'NEIGHBOURHOOD RADIO ON · 5 KM' : 'NO SEARCH. NO SHORTCUTS.'}</span></aside>
+  <aside class="briefing panel"><span class="briefing-tab">FIELD BRIEFING</span><div class="briefing-character"><Spotter seed="dispatch-chief" mood="searching"/></div><h2>A perfectly normal<br/>amount of nosy.</h2><ol><li><span>01</span><div><strong>Make the list.</strong><p>Pick things worth spotting.</p></div></li><li><span>02</span><div><strong>Get out there.</strong><p>Save your Street View evidence.</p></div></li><li><span>03</span><div><strong>Make the call.</strong><p>Most accepted matches wins.</p></div></li></ol><span class="briefing-bottom" title={banned.map(countryName).join(', ') || undefined}>{session.settings.proximityEnabled && banned.length ? `RADIO ON · 5 KM · ${banned.length} OFF-LIMITS` : session.settings.proximityEnabled ? 'NEIGHBOURHOOD RADIO ON · 5 KM' : banned.length ? `${banned.length} ${banned.length === 1 ? 'COUNTRY' : 'COUNTRIES'} OFF-LIMITS` : 'NO SEARCH. NO SHORTCUTS.'}</span></aside>
 </div>

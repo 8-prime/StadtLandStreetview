@@ -50,13 +50,14 @@ All players search for the same categories. Each player's goal is to submit one 
 
 ## Stage 2: Explore and collect findings
 
-Each player gets a Google Maps view **without search**, with a **Map / Satellite** switch for the overhead map. Players can move anywhere on the map and place the Street View pin to explore street-level imagery.
+Each player gets a Google Maps view **without search**, with a **Map / Satellite** switch for the overhead map. Every player starts at their own random town, with countries drawn evenly so large countries don't dominate, and Street View opens at the nearest panorama. Players can then move anywhere on the map and place the Street View pin to explore street-level imagery.
 
 - There is **one overall time limit** for the search stage and **no separate time limit per category**.
 - Players can work on the categories in any order and switch between them freely.
 - A player can save their current Street View as a finding for any category.
 - Players may save multiple candidate findings for the same category during the search.
 - The optional **Neighbourhood radio** room setting adds anonymous signals when another Street View player is within 5 km, with a stronger signal within 250 m. It is off by default and shows no names, direction, or exact distance.
+- The optional **Off-limits countries** room setting bans countries: nobody starts there, and evidence found there can't be saved. Players can still pass through them in Street View, and the save button explains why it is disabled.
 - Players can mark **Done searching** and undo while waiting. If every active player is ready, searching ends early; otherwise it ends at the shared deadline. Saving or changing evidence clears that player's readiness.
 
 ### Final selection after searching ends
@@ -105,3 +106,8 @@ The core game flow above is established. The following details remain open:
 - Final limits and permissions for category collection. The prototype lets everyone add, edit, or remove categories before agreeing to the list.
 - Production session expiration and any recovery mechanism for players who never reconnect.
 - Whether joint winners should remain the final tie rule or be replaced by a tie-breaker.
+
+## Data attribution
+
+- Country boundaries for off-limits countries come from the [`country-boundaries`](https://crates.io/crates/country-boundaries) crate. Data © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), [ODbL](https://opendatacommons.org/licenses/odbl/).
+- Random search starts in `backend/data/start-points.csv` are derived from [GeoNames](https://www.geonames.org/) (CC BY 4.0) by `scripts/start_points.py`.

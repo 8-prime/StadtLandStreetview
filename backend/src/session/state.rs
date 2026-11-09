@@ -10,11 +10,23 @@ pub struct Position {
     pub lng: f64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RoomSettings {
     #[serde(default)]
     pub proximity_enabled: bool,
+    /// ISO 3166-1 alpha-2 codes. Findings there are rejected, and no search starts there.
+    #[serde(default)]
+    pub banned_countries: Vec<String>,
+}
+
+/// Sent over the WebSocket for the most recently reported Street View position.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TerritoryState {
+    pub step_id: Uuid,
+    /// The banned country containing the position, or `None` if it may be saved.
+    pub banned: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -130,6 +142,8 @@ pub struct SessionState {
     pub duration_seconds: u64,
     pub server_time: i64,
     pub search_ends_at: Option<i64>,
+    /// This player's random search start; `None` before searching begins.
+    pub start: Option<Position>,
     pub players: Vec<PlayerState>,
     pub categories: Vec<Category>,
     pub own_findings: Vec<Finding>,

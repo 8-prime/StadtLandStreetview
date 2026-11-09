@@ -3,7 +3,10 @@ use std::time::Duration;
 use tokio::time::Instant;
 use uuid::Uuid;
 
-use super::{Phase, Position, ProximityBand, ProximityState, Result, Session, SessionError};
+use super::{
+    Phase, Position, ProximityBand, ProximityState, Result, Session, SessionError, TerritoryState,
+    geography,
+};
 
 const PRESENCE_LIFETIME: Duration = Duration::from_secs(15);
 const NEARBY_METERS: f64 = 5_000.0;
@@ -24,7 +27,7 @@ impl Session {
         step_id: Uuid,
         position: Option<Position>,
         now: Instant,
-    ) -> Result<()> {
+    ) -> Result<TerritoryState> {
         let player = self.active_player(player_id)?;
         if !player.connections.contains(&connection_id) {
             return Err(SessionError::Forbidden(
@@ -32,10 +35,10 @@ impl Session {
             ));
         }
         self.require_phase(&[Phase::Searching])?;
-        if !self.settings.proximity_enabled || self.step_id != step_id {
-            return Err(SessionError::Conflict(
-                "The neighbourhood radio is not active.",
-            ));
+        let reports_needed =
+            self.settings.proximity_enabled || !self.settings.banned_countries.is_empty();
+        if !reports_needed || self.step_id != step_id {
+            return Err(SessionError::Conflict("Position reports are not active."));
         }
         if let Some(position) = position {
             if !position.lat.is_finite()
@@ -45,18 +48,25 @@ impl Session {
             {
                 return Err(SessionError::InvalidInput("Invalid Street View position."));
             }
-            self.presence.insert(
-                connection_id,
-                Presence {
-                    player_id,
-                    position,
-                    updated_at: now,
-                },
-            );
+            if self.settings.proximity_enabled {
+                self.presence.insert(
+                    connection_id,
+                    Presence {
+                        player_id,
+                        position,
+                        updated_at: now,
+                    },
+                );
+            }
         } else {
             self.presence.remove(&connection_id);
         }
-        Ok(())
+        Ok(TerritoryState {
+            step_id,
+            banned: position.and_then(|position| {
+                geography::banned_country(position, &self.settings.banned_countries)
+            }),
+        })
     }
 
     fn current_position(&self, player_id: Uuid, now: Instant) -> Option<Position> {

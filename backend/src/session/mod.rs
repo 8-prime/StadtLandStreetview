@@ -4,11 +4,13 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 mod error;
+mod geography;
 mod manager;
 mod proximity;
 mod state;
 
 pub use error::{Result, SessionError};
+pub use geography::MAX_BANNED_COUNTRIES;
 pub use manager::{SessionConnection, SessionManager};
 pub use state::*;
 
@@ -29,6 +31,7 @@ struct Player {
     score: u32,
     left: bool,
     connections: HashSet<Uuid>,
+    start: Option<Position>,
 }
 
 /// Synchronous game rules. The manager serializes access to each session.
@@ -140,6 +143,7 @@ impl Session {
                     score: 0,
                     left: false,
                     connections: HashSet::new(),
+                    start: None,
                 },
             );
             self.player_order.push(player_id);
@@ -314,6 +318,11 @@ impl Session {
             return Err(SessionError::NotFound("Category not found."));
         }
         validate_viewpoint(&view)?;
+        if geography::banned_country(view.position, &self.settings.banned_countries).is_some() {
+            return Err(SessionError::Forbidden(
+                "This country is off-limits this round. Find it somewhere else.",
+            ));
+        }
         let player = self.players.get_mut(&player_id).unwrap();
         let candidates = player.findings.entry(category_id).or_default();
         if candidates.len() >= MAX_FINDINGS_PER_CATEGORY {
@@ -434,6 +443,7 @@ impl Session {
             Phase::Categories if !self.categories.is_empty() => {
                 self.search_ends_at =
                     Some(now.timestamp_millis() + self.duration_sec as i64 * 1000);
+                self.assign_starts();
                 self.new_step(Phase::Searching);
             }
             Phase::Searching => self.new_step(Phase::Selection),
@@ -493,6 +503,23 @@ impl Session {
         }
     }
 
+    fn assign_starts(&mut self) {
+        let players = self
+            .player_order
+            .iter()
+            .filter(|id| !self.players[*id].left)
+            .copied()
+            .collect::<Vec<_>>();
+        let starts = geography::random_starts(
+            players.len(),
+            &self.settings.banned_countries,
+            &mut fastrand::Rng::new(),
+        );
+        for (id, start) in players.iter().zip(starts) {
+            self.players.get_mut(id).unwrap().start = Some(start);
+        }
+    }
+
     fn snapshot(&self, player_id: Uuid, now: DateTime<Utc>) -> Result<SessionState> {
         let player = self.active_player(player_id)?;
         let review = if self.phase == Phase::Review {
@@ -522,10 +549,11 @@ impl Session {
             phase: self.phase,
             me_id: player_id,
             demo: false,
-            settings: self.settings,
+            settings: self.settings.clone(),
             duration_seconds: self.duration_sec,
             server_time: now.timestamp_millis(),
             search_ends_at: self.search_ends_at,
+            start: player.start,
             players: self
                 .player_order
                 .iter()

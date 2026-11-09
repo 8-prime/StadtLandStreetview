@@ -1,4 +1,4 @@
-import type { Action, SessionApi, SessionState } from './types';
+import { defaultSettings, type Action, type SessionApi, type SessionState } from './types';
 
 const sockets = new Map<string, WebSocket>();
 
@@ -34,7 +34,7 @@ function actionRequest(id: string, action: Action) {
 }
 
 export const httpApi: SessionApi = {
-  async create(name, durationSeconds, demo, settings = { proximityEnabled: false }) {
+  async create(name, durationSeconds, demo, settings = defaultSettings()) {
     if (demo) throw new Error('Solo demos are available only in mock mode.');
     const { id } = await request<{ id: string }>('/sessions', 'POST', { name, durationSeconds, settings });
     return id;
@@ -47,7 +47,7 @@ export const httpApi: SessionApi = {
     const socket = sockets.get(id);
     if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'position', ...report }));
   },
-  subscribe(id, onState, onConnection, onError, onProximity) {
+  subscribe(id, onState, onConnection, onError, onProximity, onTerritory) {
     let disposed = false;
     let socket: WebSocket | undefined;
     let retry: ReturnType<typeof setTimeout>;
@@ -77,6 +77,10 @@ export const httpApi: SessionApi = {
           const message = JSON.parse(event.data);
           if (message.type === 'proximity') {
             if (typeof message.stepId === 'string' && ['inactive', 'quiet', 'nearby', 'close'].includes(message.band)) onProximity?.({ stepId: message.stepId, band: message.band });
+            return;
+          }
+          if (message.type === 'territory') {
+            if (typeof message.stepId === 'string' && (message.banned === null || typeof message.banned === 'string')) onTerritory?.({ stepId: message.stepId, banned: message.banned });
             return;
           }
         } catch { /* Other notifications retain the existing snapshot resync behavior. */ }

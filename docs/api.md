@@ -19,7 +19,7 @@ All paths below are relative to `/api`.
 
 | Method | Path | Request / response |
 | --- | --- | --- |
-| POST | `/sessions` | `{ name, durationSeconds, settings?: { proximityEnabled?: boolean } }` → `{ id }`; establish membership; radio defaults off |
+| POST | `/sessions` | `{ name, durationSeconds, settings?: { proximityEnabled?: boolean, bannedCountries?: string[] } }` → `{ id }`; establish membership; radio defaults off, no banned countries |
 | POST | `/sessions/{sessionId}/join` | `{ name }`; establish or resume membership |
 | POST | `/sessions/{sessionId}/leave` | Explicitly leave; preserve submissions and scores |
 | GET | `/sessions/{sessionId}` | A personalized `SessionState` snapshot |
@@ -60,8 +60,9 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 | `phase` | `lobby`, `categories`, `searching`, `selection`, `review`, or `finished` |
 | `meId` | Authenticated player's ID |
 | `demo` | `false` for backend rooms |
-| `settings` | `{ proximityEnabled: boolean }`; fixed at room creation and shared by all players |
+| `settings` | `{ proximityEnabled: boolean, bannedCountries: string[] }`; fixed at room creation and shared by all players. Codes are sorted, upper-case ISO 3166-1 alpha-2 |
 | `durationSeconds`, `serverTime`, `searchEndsAt` | Duration, server clock, and deadline (`null` before searching) |
+| `start` | This player's private search start `{ lat, lng }`, assigned when searching begins; `null` before |
 | `players` | `{ id, name, color, ready, connected, score, left }[]`; color is a palette index 0–5 |
 | `categories` | Ordered `{ id, text }[]` |
 | `ownFindings` | Requesting player's candidates only |
@@ -114,6 +115,20 @@ The server checks proximity once per second and sends a personalized message onl
 Bands are `inactive` (no fresh position for this player), `quiet` (no fresh peer within 5 km), `nearby` (nearest peer within 5 km), and `close` (nearest peer within 250 m). Distances are geographic straight-line distances. Only the band is returned: identities, coordinates, exact distances, counts, and directions are not included. The client associates messages with their search step, including messages arriving before a corresponding snapshot.
 
 Positions expire after 15 seconds without an update, are cleared on disconnect/leave and phase transitions, and are never stored in game snapshots or findings. Multiple sockets belonging to the same player use the most recently reported fresh position; closing one socket removes only its own presence. The local prototype keeps separate timestamped presence records for cross-tab synchronization; illustrated demo peers use simulated positions. No additional Google Maps calls are needed for the distance calculation.
+
+### Off-limits countries and search starts
+
+`settings.bannedCountries` lists ISO 3166-1 alpha-2 codes. Creation normalizes them to upper case, sorts them, and removes duplicates. Malformed codes return `400`, as does a list that bans every country with search starts.
+
+- When searching begins, the server gives each active player a random `start`, chosen from a bundled town list after removing banned countries. Countries are drawn evenly and don't repeat until all are used. Other players' starts are never sent.
+- `POST /findings` returns `403` if the view's position is in a banned country. The lookup uses bundled OpenStreetMap boundaries and needs no Google request.
+- If any country is banned, clients send the `position` frames described above, even with the radio off. After each accepted frame, the server sends this message, but only when the result changes:
+
+```json
+{ "type": "territory", "stepId": "current-search-step", "banned": "DE" }
+```
+
+`banned` is the banned ISO code containing the last reported position, or `null` (including after `position: null`). Like proximity messages, these don't trigger a snapshot fetch. When banned countries are set without the radio, positions are checked and then discarded. They are never stored as presence.
 
 ## Progression rules used by the UI
 

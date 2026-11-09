@@ -1102,3 +1102,113 @@ async fn websocket_shutdown_unregisters_the_connection() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn banned_countries_are_normalized_validated_and_shared() {
+    let (_, app) = app();
+    let reply = request(
+        &app,
+        Method::POST,
+        "/api/sessions",
+        None,
+        Some(json!({
+            "name": "Alex", "durationSeconds": 60, "settings": { "bannedCountries": ["fr", "DE", "fr"] }
+        })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CREATED);
+    let id = reply.id();
+    let other = join(&app, &id, "Mika", None).await;
+    let settings = &snapshot(&app, &id, &other).await["settings"];
+    assert_eq!(settings["bannedCountries"], json!(["DE", "FR"]));
+    assert_eq!(settings["proximityEnabled"], false);
+    for invalid in [json!(["DEU"]), json!([""]), json!("DE")] {
+        let reply = request(
+            &app,
+            Method::POST,
+            "/api/sessions",
+            None,
+            Some(json!({
+                "name": "Alex", "durationSeconds": 60, "settings": { "bannedCountries": invalid }
+            })),
+        )
+        .await;
+        assert!(reply.status.is_client_error(), "{invalid}");
+    }
+}
+
+#[tokio::test]
+async fn websocket_reports_banned_territory_without_the_radio() {
+    let server = Server::start(websocket::SocketSettings::default()).await;
+    let created = request(
+        &server.app,
+        Method::POST,
+        "/api/sessions",
+        None,
+        Some(json!({
+            "name": "Alex", "durationSeconds": 60, "settings": { "bannedCountries": ["DE"] }
+        })),
+    )
+    .await;
+    let id = created.id();
+    let alex = created.cookie();
+    ready_all(&server.app, &id, &[&alex]).await;
+    request(
+        &server.app,
+        Method::POST,
+        &format!("/api/sessions/{id}/categories"),
+        Some(&alex),
+        Some(json!({ "text": "Door" })),
+    )
+    .await;
+    ready_all(&server.app, &id, &[&alex]).await;
+    let state = snapshot(&server.app, &id, &alex).await;
+    assert!(state["start"]["lat"].is_number());
+    let step = state["stepId"].clone();
+    let mut socket = server.socket(&id, Some(&alex), None).await.unwrap();
+    connected(&server, &id, &alex, true).await;
+    async fn territory(socket: &mut Socket) -> Value {
+        timeout(Duration::from_secs(4), async {
+            loop {
+                match socket.next().await.unwrap().unwrap() {
+                    WsMessage::Text(text) => {
+                        let value: Value = serde_json::from_str(&text).unwrap();
+                        if value["type"] == "territory" {
+                            return value;
+                        }
+                    }
+                    WsMessage::Ping(data) => socket.send(WsMessage::Pong(data)).await.unwrap(),
+                    other => panic!("Unexpected frame: {other:?}"),
+                }
+            }
+        })
+        .await
+        .unwrap()
+    }
+    let report = |lat: f64, lng: f64| {
+        WsMessage::Text(
+            json!({ "type": "position", "stepId": step, "position": { "lat": lat, "lng": lng } })
+                .to_string()
+                .into(),
+        )
+    };
+    socket.send(report(52.52, 13.405)).await.unwrap();
+    let berlin = territory(&mut socket).await;
+    assert_eq!(
+        berlin,
+        json!({ "type": "territory", "stepId": step, "banned": "DE" })
+    );
+    sleep(Duration::from_millis(800)).await;
+    socket.send(report(48.8566, 2.3522)).await.unwrap();
+    assert_eq!(territory(&mut socket).await["banned"], Value::Null);
+    let saved = request(
+        &server.app,
+        Method::POST,
+        &format!("/api/sessions/{id}/findings"),
+        Some(&alex),
+        Some(json!({ "categoryId": state["categories"][0]["id"], "view": viewpoint("berlin") })),
+    )
+    .await;
+    assert_eq!(saved.status, StatusCode::FORBIDDEN);
+    socket.close(None).await.unwrap();
+}

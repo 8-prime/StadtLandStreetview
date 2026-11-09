@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyAction, createRoom, currentFinding, demoView, reconcile, simulatePeers, snapshot, tick, type Room } from './engine';
+import { applyAction, createRoom, currentFinding, demoView, randomStarts, reconcile, simulatePeers, snapshot, tick, type Room } from './engine';
 
 function room() {
   const r = createRoom('TEST12', 'Alex', 'alex', 60, true);
@@ -241,5 +241,29 @@ describe('peer progression and findings', () => {
     readyAll(r);
     expect(r.phase).toBe('finished');
     expect(r.results).toEqual([]);
+  });
+});
+
+describe('search starts', () => {
+  it('gives local players distinct starts outside banned countries and keeps the demo illustrated', () => {
+    const local = createRoom('LOCAL1', 'Alex', 'alex', 60, false, { proximityEnabled: false, bannedCountries: ['DE'] });
+    local.players.push({ ...local.players[0], id: 'mika', name: 'Mika' });
+    expect(snapshot(local, 'alex').start).toBeNull();
+    readyAll(local);
+    applyAction(local, 'alex', { type: 'add-category', text: 'Door' });
+    readyAll(local);
+    expect(local.phase).toBe('searching');
+    const [alex, mika] = [snapshot(local, 'alex').start, snapshot(local, 'mika').start];
+    expect(alex).not.toBeNull();
+    expect(alex).not.toEqual(mika);
+    expect(alex).not.toEqual({ lat: 52.52, lng: 13.405 });
+    expect(snapshot(local, 'alex').settings.bannedCountries).toEqual(['DE']);
+    const demo = searching();
+    expect(snapshot(demo, 'alex').start).toBeNull();
+  });
+
+  it('cycles through allowed starts when there are more players than places', () => {
+    expect(randomStarts(30, ['DE'])).toHaveLength(30);
+    expect(randomStarts(3, ['DE', 'FR', 'GB', 'IT', 'JP', 'US', 'BR', 'AU', 'ZA', 'CA', 'MX', 'TH'])).toEqual([]);
   });
 });

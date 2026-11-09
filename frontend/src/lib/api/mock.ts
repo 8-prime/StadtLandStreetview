@@ -1,5 +1,5 @@
 import { applyAction, createRoom, reconcile, simulatePeers, snapshot, tick, uid, type Room } from './engine';
-import type { PositionReport, SessionApi } from './types';
+import { defaultSettings, type PositionReport, type SessionApi } from './types';
 import { presenceLifetime, proximityBand } from './proximity';
 
 const roomKey = (id: string) => `sls:room:${id}`;
@@ -33,7 +33,7 @@ async function update(id: string, action: (room: Room) => void) {
 }
 
 export const mockApi: SessionApi = {
-  async create(name, durationSeconds, demo = false, settings = { proximityEnabled: false }) {
+  async create(name, durationSeconds, demo = false, settings = defaultSettings()) {
     let id: string;
     do { id = uid().replaceAll('-', '').slice(0, 6).toUpperCase(); } while (localStorage.getItem(roomKey(id)));
     const playerId = uid();

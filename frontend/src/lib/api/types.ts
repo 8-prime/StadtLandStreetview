@@ -1,9 +1,12 @@
 export type Phase = 'lobby' | 'categories' | 'searching' | 'selection' | 'review' | 'finished';
 export type Vote = 'accept' | 'reject';
 export type Connection = 'connecting' | 'connected' | 'reconnecting' | 'offline';
-export interface RoomSettings { proximityEnabled: boolean }
+export interface RoomSettings { proximityEnabled: boolean; bannedCountries: string[] }
+export const defaultSettings = (): RoomSettings => ({ proximityEnabled: false, bannedCountries: [] });
 export type ProximityBand = 'inactive' | 'quiet' | 'nearby' | 'close';
 export interface ProximityState { stepId: string; band: ProximityBand }
+// The banned country containing the last reported position, if any.
+export interface TerritoryState { stepId: string; banned: string | null }
 export interface PositionReport { stepId: string; position: { lat: number; lng: number } | null }
 
 export interface Viewpoint {
@@ -65,6 +68,8 @@ export interface SessionState {
   durationSeconds: number;
   serverTime: number;
   searchEndsAt: number | null;
+  // This player's random search start; null before searching and in the illustrated demo.
+  start: { lat: number; lng: number } | null;
   players: Player[];
   categories: Category[];
   ownFindings: Finding[];
@@ -90,5 +95,5 @@ export interface SessionApi {
   send(id: string, action: Action): Promise<void>;
   leave(id: string): Promise<void>;
   reportPosition(id: string, report: PositionReport): void;
-  subscribe(id: string, state: (value: SessionState) => void, connection: (value: Connection) => void, error: (message: string) => void, proximity?: (value: ProximityState) => void): () => void;
+  subscribe(id: string, state: (value: SessionState) => void, connection: (value: Connection) => void, error: (message: string) => void, proximity?: (value: ProximityState) => void, territory?: (value: TerritoryState) => void): () => void;
 }

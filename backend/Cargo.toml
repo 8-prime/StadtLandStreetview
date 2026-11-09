@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 axum = { version = "0.8.9", features = ["ws"] }
 chrono = "0.4.45"
+country-boundaries = "1.2.0"
+fastrand = "2.5.0"
 futures-util = { version = "0.3", features = ["sink"] }
 rust-embed = { version = "8.13.0", features = ["debug-embed", "deterministic-timestamps", "interpolate-folder-path", "mime-guess"] }
 serde = { version = "1.0", features = ["derive"] }

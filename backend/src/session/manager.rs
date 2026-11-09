@@ -6,7 +6,7 @@ use uuid::Uuid;
 
 use super::{
     Phase, Position, ProximityState, Result, RoomSettings, Session, SessionError, SessionEvent,
-    SessionMembership, SessionState, Viewpoint, Vote, new_room_code,
+    SessionMembership, SessionState, TerritoryState, Viewpoint, Vote, geography, new_room_code,
 };
 
 struct SessionHandle {
@@ -47,9 +47,10 @@ impl SessionManager {
         &self,
         name: String,
         duration_sec: u64,
-        settings: RoomSettings,
+        mut settings: RoomSettings,
     ) -> Result<SessionMembership> {
         let mut session = Session::new(duration_sec, Utc::now())?;
+        settings.banned_countries = geography::normalize_countries(&settings.banned_countries)?;
         session.settings = settings;
         let player_id = session.join(name, None)?;
         let mut sessions = self.sessions.write().await;
@@ -73,6 +74,7 @@ impl SessionManager {
     }
 
     // Presence does not mutate game revisions or publish snapshot invalidations.
+    /// Returns whether the reported position lies in a banned country.
     pub async fn report_position(
         &self,
         session_id: &str,
@@ -80,7 +82,7 @@ impl SessionManager {
         connection_id: Uuid,
         step_id: Uuid,
         position: Option<Position>,
-    ) -> Result<()> {
+    ) -> Result<TerritoryState> {
         let handle = self.find(session_id).await?;
         let mut session = handle.state.write().await;
         if session.search_expired(Utc::now()) {
