@@ -52,7 +52,7 @@ There are no host progression endpoints, separate viewer endpoints, or endpoints
 }
 ```
 
-Findings have server-generated `id`, `playerId`, and `createdAt` in addition to `categoryId` and `view`. The Souvenirs have the same fields without `categoryId`. The `demoScene` field in the TypeScript model is local-demo-only; HTTP submissions reject it.
+Findings have server-generated `id`, `playerId`, and `createdAt` in addition to `categoryId` and `view`. Souvenirs have the same fields without `categoryId`. The `demoScene` field in the TypeScript model is local-demo-only; HTTP submissions reject it.
 
 ## State snapshot
 
