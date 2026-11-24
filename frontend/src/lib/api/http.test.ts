@@ -21,13 +21,11 @@ afterEach(() => {
 });
 
 it("handles proximity messages without fetching game snapshots and reports only position/step", async () => {
-  const fetch = vi
-    .fn()
-    .mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => ({ revision: 1 }),
-    });
+  const fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ revision: 1 }),
+  });
   vi.stubGlobal("fetch", fetch);
   vi.stubGlobal("WebSocket", FakeSocket);
   vi.stubGlobal("location", { href: "http://localhost/" });
@@ -107,4 +105,40 @@ it("sends lobby rule changes as a partial settings patch", async () => {
     durationSeconds: 5400,
     bannedCountries: ["DE"],
   });
+});
+
+it("sends souvenirs without a category and turns the shared showcase page", async () => {
+  const fetch = vi.fn().mockResolvedValue({ ok: true, status: 204 });
+  vi.stubGlobal("fetch", fetch);
+  const view = {
+    panoramaId: "goat",
+    position: { lat: 52.52, lng: 13.405 },
+    heading: 90,
+    pitch: 0,
+    zoom: 1,
+  };
+  await httpApi.send("ROOM", { type: "save-souvenir", view });
+  await httpApi.send("ROOM", { type: "delete-souvenir", souvenirId: "one" });
+  await httpApi.send("ROOM", {
+    type: "show-souvenir",
+    stepId: "step",
+    index: 2,
+  });
+  expect(
+    fetch.mock.calls.map(([url, init]) => [init.method, url, init.body]),
+  ).toEqual([
+    ["POST", "/api/sessions/ROOM/souvenirs", JSON.stringify({ view })],
+    ["DELETE", "/api/sessions/ROOM/souvenirs/one", undefined],
+    [
+      "PUT",
+      "/api/sessions/ROOM/showcase",
+      JSON.stringify({ stepId: "step", index: 2 }),
+    ],
+  ]);
+  await expect(
+    httpApi.send("ROOM", {
+      type: "save-souvenir",
+      view: { ...view, demoScene: 0 },
+    }),
+  ).rejects.toThrow("Illustrated");
 });

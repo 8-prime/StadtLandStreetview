@@ -9,6 +9,8 @@ import {
   type ReviewResult,
   type RoomSettings,
   type SessionState,
+  type Souvenir,
+  type Viewpoint,
   type Vote,
 } from "./types";
 
@@ -32,6 +34,10 @@ export interface Room {
   reviewIndex: number;
   votes: Record<string, Vote>;
   results: ReviewResult[];
+  // Absent in rooms stored before souvenirs existed.
+  souvenirs?: Souvenir[];
+  showcaseIndex?: number;
+  souvenirIndex?: number;
 }
 
 export const uid = () => crypto.randomUUID();
@@ -100,6 +106,9 @@ export function createRoom(
     reviewIndex: 0,
     votes: {},
     results: [],
+    souvenirs: [],
+    showcaseIndex: 0,
+    souvenirIndex: 0,
     players: names.map((n, i) => ({
       id: i === 0 ? playerId : uid(),
       name: n,
@@ -122,6 +131,35 @@ function newStep(room: Room, phase: Phase) {
 
 export function currentFinding(room: Room) {
   return room.findings.find((f) => f.id === room.queue[room.reviewIndex]);
+}
+
+function souvenirsOf(room: Room, playerId?: string) {
+  return (room.souvenirs ?? []).filter((s) => s.playerId === playerId);
+}
+
+// Players with souvenirs in join order, including departed players.
+function showcasePlayers(room: Room) {
+  return room.players.filter((p) => souvenirsOf(room, p.id).length);
+}
+
+function presentedSouvenirs(room: Room) {
+  return souvenirsOf(room, showcasePlayers(room)[room.showcaseIndex ?? 0]?.id);
+}
+
+function lastSouvenirShown(room: Room) {
+  return (room.souvenirIndex ?? 0) + 1 >= presentedSouvenirs(room).length;
+}
+
+// Opens the leaderboard, as a separate step if souvenirs follow.
+function finishReview(room: Room) {
+  newStep(room, showcasePlayers(room).length ? "scores" : "finished");
+}
+
+function requireRealView(room: Room, view: Viewpoint) {
+  if (view.demoScene !== undefined && !room.demo)
+    throw new Error(
+      "Only real Street View findings can be saved in this room.",
+    );
 }
 
 function autoSelections(room: Room) {
@@ -180,7 +218,7 @@ function advance(room: Room, now: number) {
     if (room.demo) {
       room.players
         .filter((p) => p.bot)
-        .forEach((p, i) =>
+        .forEach((p, i) => {
           room.categories.forEach((c, j) => {
             room.findings.push({
               id: uid(),
@@ -189,8 +227,17 @@ function advance(room: Room, now: number) {
               view: demoView((i + j + 1) % 3),
               createdAt: now,
             });
-          }),
-        );
+          });
+          room.souvenirs = [
+            ...(room.souvenirs ?? []),
+            ...Array.from({ length: 2 - i }, (_, j) => ({
+              id: uid(),
+              playerId: p.id,
+              view: demoView((i + j) % 3),
+              createdAt: now,
+            })),
+          ];
+        });
     }
   } else if (room.phase === "searching") {
     autoSelections(room);
@@ -205,7 +252,8 @@ function advance(room: Room, now: number) {
     );
     room.reviewIndex = 0;
     room.votes = {};
-    newStep(room, room.queue.length ? "review" : "finished");
+    if (room.queue.length) newStep(room, "review");
+    else finishReview(room);
   } else if (room.phase === "review") {
     const finding = currentFinding(room)!;
     const accepts = Object.values(room.votes).filter(
@@ -226,7 +274,19 @@ function advance(room: Room, now: number) {
     if (accepted) room.players.find((p) => p.id === finding.playerId)!.score++;
     room.reviewIndex++;
     room.votes = {};
-    newStep(room, room.reviewIndex < room.queue.length ? "review" : "finished");
+    if (room.reviewIndex < room.queue.length) newStep(room, "review");
+    else finishReview(room);
+  } else if (room.phase === "scores") {
+    newStep(room, "souvenirs");
+  } else if (room.phase === "souvenirs") {
+    room.showcaseIndex = (room.showcaseIndex ?? 0) + 1;
+    room.souvenirIndex = 0;
+    newStep(
+      room,
+      room.showcaseIndex < showcasePlayers(room).length
+        ? "souvenirs"
+        : "finished",
+    );
   }
 }
 
@@ -250,11 +310,16 @@ export function applyAction(
     const finding = currentFinding(room);
     if (room.phase === "review" && finding?.playerId !== playerId)
       throw new Error("Cast your vote instead of marking yourself ready.");
+    if (action.ready && room.phase === "souvenirs" && !lastSouvenirShown(room))
+      throw new Error("Look through all of these souvenirs first.");
     player.ready = action.ready;
   } else if (action.type === "restart") {
     // A repeat request for the same finished round is harmless once back in the lobby.
     if (room.phase === "lobby") return;
-    if (room.phase !== "finished" || room.stepId !== action.stepId)
+    if (
+      !["scores", "souvenirs", "finished"].includes(room.phase) ||
+      room.stepId !== action.stepId
+    )
       throw new Error("The group has moved on. Please check the current step.");
     Object.assign(room, {
       searchEndsAt: null,
@@ -266,6 +331,9 @@ export function applyAction(
       reviewIndex: 0,
       votes: {},
       results: [],
+      souvenirs: [],
+      showcaseIndex: 0,
+      souvenirIndex: 0,
     });
     room.players.forEach((p) => (p.score = 0));
     newStep(room, "lobby");
@@ -332,10 +400,7 @@ export function applyAction(
       throw new Error("Search time is over. Choose from your saved views.");
     if (!room.categories.some((c) => c.id === action.categoryId))
       throw new Error("Unknown category.");
-    if (action.view.demoScene !== undefined && !room.demo)
-      throw new Error(
-        "Only real Street View findings can be saved in this room.",
-      );
+    requireRealView(room, action.view);
     const candidates = room.findings.filter(
       (f) => f.playerId === playerId && f.categoryId === action.categoryId,
     );
@@ -376,6 +441,35 @@ export function applyAction(
       throw new Error("Invalid final selection.");
     (room.selections[playerId] ??= {})[action.categoryId] = action.findingId;
     player.ready = false;
+  } else if (action.type === "save-souvenir") {
+    if (room.phase !== "searching")
+      throw new Error("Search time is over. Souvenirs are packed.");
+    requireRealView(room, action.view);
+    const souvenirs = (room.souvenirs ??= []);
+    if (souvenirsOf(room, playerId).length >= 12)
+      throw new Error(
+        "You have 12 souvenirs. Remove one before adding another.",
+      );
+    souvenirs.push({
+      id: uid(),
+      playerId,
+      view: structuredClone(action.view),
+      createdAt: now,
+    });
+    player.ready = false;
+  } else if (action.type === "delete-souvenir") {
+    if (room.phase !== "searching") throw new Error("Souvenirs are packed.");
+    const own = souvenirsOf(room, playerId);
+    if (!own.some((s) => s.id === action.souvenirId))
+      throw new Error("Souvenir not found.");
+    room.souvenirs = room.souvenirs!.filter((s) => s.id !== action.souvenirId);
+    player.ready = false;
+  } else if (action.type === "show-souvenir") {
+    if (room.phase !== "souvenirs" || room.stepId !== action.stepId)
+      throw new Error("The group has moved on. Please check the current step.");
+    if (!presentedSouvenirs(room)[action.index])
+      throw new Error("Souvenir not found.");
+    room.souvenirIndex = action.index;
   } else if (action.type === "vote") {
     const finding = currentFinding(room);
     if (room.phase !== "review" || finding?.id !== action.itemId)
@@ -393,6 +487,8 @@ export function simulatePeers(room: Room, now = Date.now()): boolean {
   const bots = room.players.filter((p) => p.bot && !p.left && !p.ready);
   if (!bots.length || (room.phase === "categories" && !room.categories.length))
     return false;
+  // A visitor turns the pages; simulated peers just wait for the last one.
+  if (room.phase === "souvenirs" && !lastSouvenirShown(room)) return false;
   for (const bot of bots) {
     const finding = currentFinding(room);
     if (room.phase === "review" && finding && finding.playerId !== bot.id) {
@@ -409,6 +505,8 @@ export function snapshot(room: Room, meId: string): SessionState {
   if (!room.players.some((p) => p.id === meId && !p.left))
     throw new Error("Join this room to continue.");
   const finding = currentFinding(room);
+  const presented = presentedSouvenirs(room);
+  const souvenirIndex = room.souvenirIndex ?? 0;
   return structuredClone({
     id: room.id,
     revision: room.revision,
@@ -425,6 +523,7 @@ export function snapshot(room: Room, meId: string): SessionState {
     categories: room.categories,
     ownFindings: room.findings.filter((f) => f.playerId === meId),
     selections: room.selections[meId] ?? {},
+    ownSouvenirs: souvenirsOf(room, meId),
     review:
       room.phase === "review" && finding
         ? {
@@ -442,6 +541,16 @@ export function snapshot(room: Room, meId: string): SessionState {
           }
         : null,
     results: room.results,
+    showcase:
+      room.phase === "souvenirs" && presented[souvenirIndex]
+        ? {
+            souvenir: presented[souvenirIndex],
+            index: souvenirIndex,
+            total: presented.length,
+            playerIndex: room.showcaseIndex ?? 0,
+            playerTotal: showcasePlayers(room).length,
+          }
+        : null,
   });
 }
 

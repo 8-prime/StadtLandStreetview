@@ -74,6 +74,16 @@ pub struct Finding {
     pub created_at: i64,
 }
 
+/// Something fun a player spotted, outside the categories. Never voted on or scored.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Souvenir {
+    pub id: Uuid,
+    pub player_id: Uuid,
+    pub view: Viewpoint,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Phase {
@@ -82,6 +92,10 @@ pub enum Phase {
     Searching,
     Selection,
     Review,
+    /// The leaderboard before the souvenir showcase; skipped without souvenirs.
+    Scores,
+    /// One step per player with souvenirs.
+    Souvenirs,
     Finished,
 }
 
@@ -137,6 +151,18 @@ pub struct ReviewItem {
     pub result: Option<ReviewResult>,
 }
 
+/// The souvenir currently shown to everyone. Other souvenirs stay private until shown.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Showcase {
+    pub souvenir: Souvenir,
+    /// Position among the presenting player's souvenirs.
+    pub index: usize,
+    pub total: usize,
+    pub player_index: usize,
+    pub player_total: usize,
+}
+
 /// A personalized response. Internal session state must never be serialized.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -157,8 +183,10 @@ pub struct SessionState {
     pub categories: Vec<Category>,
     pub own_findings: Vec<Finding>,
     pub selections: HashMap<Uuid, Uuid>,
+    pub own_souvenirs: Vec<Souvenir>,
     pub review: Option<ReviewItem>,
     pub results: Vec<ReviewResult>,
+    pub showcase: Option<Showcase>,
 }
 
 #[derive(Debug, Clone, Deserialize)]

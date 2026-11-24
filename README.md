@@ -62,7 +62,8 @@ Each player gets a Google Maps view **without search**, with a **Map / Satellite
 - Players may save multiple candidate findings for the same category during the search.
 - The optional **Neighbourhood radio** room setting adds anonymous signals when another Street View player is within 5 km, with a stronger signal within 250 m. It is off by default and shows no names, direction, or exact distance.
 - The optional **Off-limits countries** room setting bans countries: nobody starts there, and evidence found there can't be saved. Players can still pass through them in Street View, and the save button explains why it is disabled.
-- Players can mark **Done searching** and undo while waiting. If every active player is ready, searching ends early; otherwise it ends at the shared deadline. Saving or changing evidence clears that player's readiness.
+- Something fun that fits no category can be kept as a **souvenir** (up to 12 per player). Souvenirs are private until the showcase after the scores, never count for points, and may also come from off-limits countries.
+- Players can mark **Done searching** and undo while waiting. If every active player is ready, searching ends early; otherwise it ends at the shared deadline. Saving or changing evidence or souvenirs clears that player's readiness.
 
 ### Final selection after searching ends
 
@@ -89,7 +90,7 @@ For each finding, players vote on whether the image matches the category. The vo
 
 All players see the **same server-controlled finding and framing**. Players cannot independently browse the other submissions during voting. Players vote on others' findings, not their own; accept votes must outnumber reject votes. Tied votes do not count as a match.
 
-Casting a vote automatically counts as ready. Only the player whose finding is being shown marks ready without voting. Votes can be changed while waiting for the remaining players. Once everyone has responded, the finding is scored and the group immediately moves to the next finding, with no result-reveal or extra readiness step. After the final finding, the group proceeds directly to the final scoreboard.
+Casting a vote automatically counts as ready. Only the player whose finding is being shown marks ready without voting. Votes can be changed while waiting for the remaining players. Once everyone has responded, the finding is scored and the group immediately moves to the next finding, with no result-reveal or extra readiness step. After the final finding, the group proceeds directly to the scoreboard.
 
 ### Winning
 
@@ -97,11 +98,17 @@ Once all findings have been reviewed, count each player's accepted matches acros
 
 The initial UI presents tied leaders as joint winners.
 
-**Back to the meeting point** on the results screen takes the whole crew back to the lobby of the same room for another round. Players and room rules stay; categories, findings, and scores start fresh.
+### Souvenir showcase
+
+If anyone kept souvenirs, the scoreboard has a ready step that leads into the showcase. Players present **one after another** in join order, and everyone sees the same souvenir. Anyone can turn the page for the whole crew. Once the presenting player's last souvenir is on screen, players mark ready to move on to the next player. Souvenirs of players who left are still shown. After the last player, the group returns to the final scoreboard. **Skip the souvenirs** takes the whole crew straight back to the lobby after a confirmation.
+
+### Another round
+
+**Back to the meeting point** on the results screen takes the whole crew back to the lobby of the same room for another round. Players and room rules stay; categories, findings, souvenirs, and scores start fresh.
 
 ## Peer-based progression
 
-There is no host controlling progression. During setup, searching, and final selection, each player can set or unset their readiness for the current step. Once all active members are ready, the game advances and resets readiness. Searching also ends automatically at its shared deadline. During review, voters are automatically ready after casting a vote, while the finding's owner confirms readiness separately.
+There is no host controlling progression. During setup, searching, final selection, and the souvenir showcase, each player can set or unset their readiness for the current step. Once all active members are ready, the game advances and resets readiness. Searching also ends automatically at its shared deadline. During review, voters are automatically ready after casting a vote, while the finding's owner confirms readiness separately.
 
 Changing the shared category list resets everyone's readiness. Changing a final selection resets that player's readiness; changing a vote keeps the voter ready. Disconnected players retain their membership and response requirement; explicitly leaving removes that requirement.
 

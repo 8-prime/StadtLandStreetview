@@ -129,7 +129,7 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | --- | --- | --- |
 | Create | `start_session(name, duration_sec)` | `SessionMembership { session_id, player_id }` |
 | Create with room options | `start_session_with_settings(name, duration_sec, RoomSettings)` | Same membership; settings default to radio off and no banned countries |
-| Restart a finished room | `restart(id, player, step_id)` | `()`; fresh lobby with the same players and rules |
+| Restart after the votes | `restart(id, player, step_id)` | `()`; fresh lobby with the same players and rules |
 | Change room rules (lobby) | `update_settings(id, player, SettingsUpdate)` | `()`; partial update, resets readiness when something changes |
 | Join/resume | `join_session(id, name, existing_player)` | Player ID |
 | Leave | `leave_session(id, player)` | `()` |
@@ -141,6 +141,9 @@ Player IDs in snapshots and room codes are public identifiers, not credentials.
 | Save candidate | `add_finding(id, player, category, view)` | Finding ID |
 | Delete candidate | `delete_finding(id, player, finding)` | `()` |
 | Select candidate | `select_finding(id, player, category, finding)` | `()` |
+| Save souvenir | `add_souvenir(id, player, view)` | Souvenir ID |
+| Delete souvenir | `delete_souvenir(id, player, souvenir)` | `()` |
+| Turn the showcase page | `show_souvenir(id, player, step_id, index)` | `()`; shared page, any member |
 | Vote | `vote(id, player, item, Vote::Accept / Vote::Reject)` | `()` |
 | Open WebSocket | `connect(id, player)` | `SessionConnection { connection_id, updates }` |
 | Close WebSocket | `disconnect(id, player, connection_id)` | `()` |
@@ -161,9 +164,14 @@ explicit leave removes readiness/voting requirements but retains submissions.
 During review, casting or changing a vote automatically marks the voter ready.
 Only the finding's owner uses `ready`; when all remaining members have responded,
 the finding is scored and the session immediately opens the next finding (or the
-final scoreboard). There is no result-reveal acknowledgement step. Completed
+scoreboard). There is no result-reveal acknowledgement step. Completed
 results are available in `SessionState.results`; the current review's legacy
 `revealed` and `result` fields remain `false` and `null` for wire compatibility.
+
+If anyone saved souvenirs, the scoreboard is a separate `Scores` step followed by
+one `Souvenirs` step per player with souvenirs, in join order and including departed
+players. Members share one page, and may mark ready once the presenting player's
+last souvenir is on screen. Rounds without souvenirs go straight to `Finished`.
 
 `SessionError` has `InvalidInput`, `Forbidden`, `NotFound`, and `Conflict` variants,
 which handlers can map to 400, 403, 404, and 409 respectively. Use its `Display`

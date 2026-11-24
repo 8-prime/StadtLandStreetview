@@ -26,6 +26,8 @@
     let now = Date.now();
     let savedMessage = "";
     let savedPage = 0;
+    // What the strip below the map lists.
+    let showSouvenirs = false;
     let messageTimer: ReturnType<typeof setTimeout>;
     const size = 3;
     const offset = session.serverTime - Date.now();
@@ -52,7 +54,9 @@
     $: candidates = session.ownFindings.filter(
         (f) => f.categoryId === categoryId,
     );
-    $: pages = Math.max(1, Math.ceil(candidates.length / size));
+    $: souvenirs = session.ownSouvenirs;
+    $: saved = showSouvenirs ? souvenirs : candidates;
+    $: pages = Math.max(1, Math.ceil(saved.length / size));
     $: if (savedPage >= pages) savedPage = pages - 1;
     function reportPosition(force = false) {
         if (!mounted || !connected || !reportsPosition) return;
@@ -93,16 +97,29 @@
                 });
         };
     });
+    function announce(message: string) {
+        savedMessage = message;
+        clearTimeout(messageTimer);
+        messageTimer = setTimeout(() => (savedMessage = ""), 3500);
+    }
+    async function saveSouvenir() {
+        if (!current) return;
+        const nextPage = Math.floor(souvenirs.length / size);
+        if (await onaction({ type: "save-souvenir", view: current })) {
+            showSouvenirs = true;
+            savedPage = nextPage;
+            announce("Souvenir packed. Show it off after the scores.");
+        }
+    }
     async function save() {
         if (!current || !category || offLimits) return;
         const nextPage = Math.floor(candidates.length / size);
         if (
             await onaction({ type: "save-finding", categoryId, view: current })
         ) {
+            showSouvenirs = false;
             savedPage = nextPage;
-            savedMessage = "Evidence secured. Nice spotting.";
-            clearTimeout(messageTimer);
-            messageTimer = setTimeout(() => (savedMessage = ""), 3500);
+            announce("Evidence secured. Nice spotting.");
         }
     }
 </script>
@@ -131,6 +148,7 @@
         selected={categoryId}
         onselect={(id) => {
             categoryId = id;
+            showSouvenirs = false;
             savedPage = 0;
             savedMessage = "";
         }}
@@ -166,6 +184,17 @@
                 >
             </div>
             <button
+                class="button secondary"
+                title="Keep something fun that fits no category"
+                onclick={saveSouvenir}
+                disabled={busy ||
+                    !current ||
+                    remaining === 0 ||
+                    souvenirs.length >= 12}
+                ><Icon name="spark" /> Keep souvenir {#if souvenirs.length}<span
+                        class="button-count">{souvenirs.length}</span
+                    >{/if}</button
+            ><button
                 class="button primary"
                 onclick={save}
                 disabled={busy ||
@@ -182,33 +211,48 @@
 </div>
 <section class="saved-strip">
     <div class="saved-strip-label">
-        <Icon name="camera" size={19} /><strong>Your evidence</strong><span
-            class="small">PRIVATE</span
-        >
+        <Icon name={showSouvenirs ? "spark" : "camera"} size={19} />
+        {#each [false, true] as souvenirTab}<button
+                class="strip-tab"
+                aria-pressed={showSouvenirs === souvenirTab}
+                onclick={() => {
+                    showSouvenirs = souvenirTab;
+                    savedPage = 0;
+                }}>{souvenirTab ? "Souvenirs" : "Your evidence"}</button
+            >{/each}<span class="small">PRIVATE</span>
     </div>
     <div class="saved-chips">
-        {#each candidates.slice(savedPage * size, (savedPage + 1) * size) as finding, i}<span
+        {#each saved.slice(savedPage * size, (savedPage + 1) * size) as item, i}<span
                 class="saved-chip"
-                ><Icon name="check" size={14} /> View {savedPage * size +
-                    i +
-                    1}<button
+                ><Icon name={showSouvenirs ? "spark" : "check"} size={14} />
+                {showSouvenirs ? "Souvenir" : "View"}
+                {savedPage * size + i + 1}<button
                     class="icon-button"
                     disabled={busy}
-                    aria-label={`Remove saved view ${savedPage * size + i + 1}`}
+                    aria-label={`Remove ${showSouvenirs ? "souvenir" : "saved view"} ${savedPage * size + i + 1}`}
                     onclick={() =>
-                        onaction({
-                            type: "delete-finding",
-                            findingId: finding.id,
-                        })}><Icon name="close" size={13} /></button
+                        onaction(
+                            showSouvenirs
+                                ? {
+                                      type: "delete-souvenir",
+                                      souvenirId: item.id,
+                                  }
+                                : {
+                                      type: "delete-finding",
+                                      findingId: item.id,
+                                  },
+                        )}><Icon name="close" size={13} /></button
                 ></span
             >{:else}<span class="muted small"
-                >Your next great find goes here.</span
+                >{showSouvenirs
+                    ? "Fun things that fit no category go here."
+                    : "Your next great find goes here."}</span
             >{/each}
     </div>
     <Pager
         page={savedPage}
         {pages}
-        label="saved views"
+        label={showSouvenirs ? "souvenirs" : "saved views"}
         onpage={(value) => (savedPage = value)}
     />
 </section>
@@ -217,6 +261,28 @@
     .off-limits {
         color: #b43c27;
         font-weight: 800;
+    }
+    .strip-tab {
+        margin-left: 4px;
+        padding: 2px 0;
+        border: 0;
+        border-bottom: 3px solid transparent;
+        background: none;
+        color: var(--muted);
+        font-family: var(--heading);
+        font-size: 15px;
+        font-weight: 800;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .strip-tab[aria-pressed="true"] {
+        border-color: var(--ink);
+        color: var(--ink);
+    }
+    @media (max-width: 900px) {
+        .strip-tab {
+            font-size: 12px;
+        }
     }
     .search-instruments {
         display: flex;

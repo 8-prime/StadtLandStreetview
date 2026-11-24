@@ -17,6 +17,7 @@ pub use state::*;
 pub const MAX_PLAYERS: usize = 12;
 pub const MAX_CATEGORIES: usize = 12;
 pub const MAX_FINDINGS_PER_CATEGORY: usize = 12;
+pub const MAX_SOUVENIRS: usize = 12;
 pub const MIN_DURATION_SECONDS: u64 = 60;
 pub const MAX_DURATION_SECONDS: u64 = 24 * 60 * 60;
 
@@ -27,6 +28,7 @@ struct Player {
     color: usize,
     findings: HashMap<Uuid, Vec<Finding>>,
     selections: HashMap<Uuid, Uuid>,
+    souvenirs: Vec<Souvenir>,
     is_ready: bool,
     score: u32,
     left: bool,
@@ -55,6 +57,9 @@ struct Session {
     review_index: usize,
     votes: HashMap<Uuid, Vote>,
     results: Vec<ReviewResult>,
+    // Positions in the showcase: the presenting player, then their souvenir.
+    showcase_index: usize,
+    souvenir_index: usize,
 }
 
 impl Session {
@@ -78,6 +83,8 @@ impl Session {
             review_index: 0,
             votes: HashMap::new(),
             results: Vec::new(),
+            showcase_index: 0,
+            souvenir_index: 0,
         })
     }
 
@@ -135,6 +142,7 @@ impl Session {
                     color: self.player_order.len() % 6,
                     findings: HashMap::new(),
                     selections: HashMap::new(),
+                    souvenirs: Vec::new(),
                     is_ready: false,
                     score: 0,
                     left: false,
@@ -234,6 +242,8 @@ impl Session {
             Phase::Searching,
             Phase::Selection,
             Phase::Review,
+            Phase::Scores,
+            Phase::Souvenirs,
         ])?;
         if is_ready && self.phase == Phase::Categories && self.categories.is_empty() {
             return Err(SessionError::Conflict("Add at least one category first."));
@@ -243,6 +253,14 @@ impl Session {
         {
             return Err(SessionError::Conflict(
                 "Cast your vote instead of marking yourself ready.",
+            ));
+        }
+        if is_ready
+            && self.phase == Phase::Souvenirs
+            && self.souvenir_index + 1 < self.presenter().souvenirs.len()
+        {
+            return Err(SessionError::Conflict(
+                "Look through all of these souvenirs first.",
             ));
         }
         self.players.get_mut(&player_id).unwrap().is_ready = is_ready;
@@ -289,15 +307,19 @@ impl Session {
         Ok(())
     }
 
-    /// Returns a finished room to a fresh lobby. Players, colors, and room rules stay;
-    /// everything from the finished round is cleared. A repeat request for the same
+    /// Returns a room whose votes are all in to a fresh lobby, skipping any souvenirs not
+    /// shown yet. Players, colors, and room rules stay; everything else is cleared. A repeat request for the same
     /// finished round is a no-op once the room is back in the lobby.
     fn restart(&mut self, player_id: Uuid, step_id: Uuid) -> Result<()> {
         self.active_player(player_id)?;
         if self.phase == Phase::Lobby {
             return Ok(());
         }
-        if self.phase != Phase::Finished || self.step_id != step_id {
+        if !matches!(
+            self.phase,
+            Phase::Scores | Phase::Souvenirs | Phase::Finished
+        ) || self.step_id != step_id
+        {
             return Err(SessionError::Conflict(
                 "The group has moved on. Please check the current step.",
             ));
@@ -305,6 +327,7 @@ impl Session {
         for player in self.players.values_mut() {
             player.findings.clear();
             player.selections.clear();
+            player.souvenirs.clear();
             player.score = 0;
             player.start = None;
         }
@@ -315,6 +338,8 @@ impl Session {
         self.review_index = 0;
         self.votes.clear();
         self.results.clear();
+        self.showcase_index = 0;
+        self.souvenir_index = 0;
         self.new_step(Phase::Lobby);
         Ok(())
     }
@@ -453,6 +478,88 @@ impl Session {
         Ok(())
     }
 
+    /// Souvenirs never score, so they may also come from off-limits countries.
+    fn add_souvenir(
+        &mut self,
+        player_id: Uuid,
+        view: Viewpoint,
+        now: DateTime<Utc>,
+    ) -> Result<Uuid> {
+        self.active_player(player_id)?;
+        self.require_phase(&[Phase::Searching])?;
+        validate_viewpoint(&view)?;
+        let player = self.players.get_mut(&player_id).unwrap();
+        if player.souvenirs.len() >= MAX_SOUVENIRS {
+            return Err(SessionError::Conflict(
+                "You have 12 souvenirs. Remove one before adding another.",
+            ));
+        }
+        let id = Uuid::new_v4();
+        player.souvenirs.push(Souvenir {
+            id,
+            player_id,
+            view,
+            created_at: now.timestamp_millis(),
+        });
+        player.is_ready = false;
+        Ok(id)
+    }
+
+    fn delete_souvenir(&mut self, player_id: Uuid, souvenir_id: Uuid) -> Result<()> {
+        self.active_player(player_id)?;
+        self.require_phase(&[Phase::Searching])?;
+        let player = self.players.get_mut(&player_id).unwrap();
+        let index = player
+            .souvenirs
+            .iter()
+            .position(|souvenir| souvenir.id == souvenir_id)
+            .ok_or(SessionError::NotFound("Souvenir not found."))?;
+        player.souvenirs.remove(index);
+        player.is_ready = false;
+        Ok(())
+    }
+
+    /// Players with souvenirs in join order, including departed players. The list cannot
+    /// change after searching ends.
+    fn showcase_players(&self) -> impl Iterator<Item = &Player> {
+        self.player_order
+            .iter()
+            .map(|id| &self.players[id])
+            .filter(|player| !player.souvenirs.is_empty())
+    }
+
+    /// Only meaningful during the souvenir showcase.
+    fn presenter(&self) -> &Player {
+        self.showcase_players().nth(self.showcase_index).unwrap()
+    }
+
+    /// Turns the shared page. Any member may do this, so nobody holds up the group.
+    /// The request names its target page, which makes simultaneous clicks harmless.
+    fn show_souvenir(&mut self, player_id: Uuid, step_id: Uuid, index: usize) -> Result<()> {
+        self.active_player(player_id)?;
+        if self.step_id != step_id {
+            return Err(SessionError::Conflict(
+                "The group has moved on. Please check the current step.",
+            ));
+        }
+        self.require_phase(&[Phase::Souvenirs])?;
+        if index >= self.presenter().souvenirs.len() {
+            return Err(SessionError::NotFound("Souvenir not found."));
+        }
+        self.souvenir_index = index;
+        Ok(())
+    }
+
+    /// Opens the leaderboard, as a separate step if souvenirs follow.
+    fn finish_review(&mut self) {
+        let phase = if self.showcase_players().next().is_some() {
+            Phase::Scores
+        } else {
+            Phase::Finished
+        };
+        self.new_step(phase);
+    }
+
     fn vote(
         &mut self,
         player_id: Uuid,
@@ -526,11 +633,11 @@ impl Session {
                         }
                     }
                 }
-                self.new_step(if self.review_queue.is_empty() {
-                    Phase::Finished
+                if self.review_queue.is_empty() {
+                    self.finish_review();
                 } else {
-                    Phase::Review
-                });
+                    self.new_step(Phase::Review);
+                }
             }
             Phase::Review => {
                 let finding = &self.review_queue[self.review_index];
@@ -558,8 +665,19 @@ impl Session {
                 }
                 self.review_index += 1;
                 self.votes.clear();
-                self.new_step(if self.review_index < self.review_queue.len() {
-                    Phase::Review
+                if self.review_index < self.review_queue.len() {
+                    self.new_step(Phase::Review);
+                } else {
+                    self.finish_review();
+                }
+            }
+            Phase::Scores => self.new_step(Phase::Souvenirs),
+            Phase::Souvenirs => {
+                self.showcase_index += 1;
+                self.souvenir_index = 0;
+                let more = self.showcase_index < self.showcase_players().count();
+                self.new_step(if more {
+                    Phase::Souvenirs
                 } else {
                     Phase::Finished
                 });
@@ -607,6 +725,16 @@ impl Session {
         } else {
             None
         };
+        let showcase = (self.phase == Phase::Souvenirs).then(|| {
+            let souvenirs = &self.presenter().souvenirs;
+            Showcase {
+                souvenir: souvenirs[self.souvenir_index].clone(),
+                index: self.souvenir_index,
+                total: souvenirs.len(),
+                player_index: self.showcase_index,
+                player_total: self.showcase_players().count(),
+            }
+        });
         Ok(SessionState {
             id: self.id.clone(),
             revision: self.revision,
@@ -648,8 +776,10 @@ impl Session {
                 .cloned()
                 .collect(),
             selections: player.selections.clone(),
+            own_souvenirs: player.souvenirs.clone(),
             review,
             results: self.results.clone(),
+            showcase,
         })
     }
 }

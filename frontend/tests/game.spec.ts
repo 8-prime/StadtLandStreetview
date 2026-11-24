@@ -77,6 +77,12 @@ test('solo demo runs through selection and automatic voting progression', async 
   await page.getByRole('button', { name: /Save view/ }).click();
   await page.getByRole('button', { name: 'Next demo scene' }).click();
   await page.getByRole('button', { name: /Save view/ }).click();
+  await page.getByRole('button', { name: /Keep souvenir/ }).click();
+  await expect(page.getByText('Souvenir packed.', { exact: false })).toBeVisible();
+  await page.getByRole('button', { name: /Keep souvenir/ }).click();
+  await page.getByRole('button', { name: /Keep souvenir/ }).click();
+  await page.getByRole('button', { name: 'Remove souvenir 3', exact: true }).click();
+  await expect(page.locator('.saved-chip')).toHaveCount(2);
   await capture(page, 'search');
   await page.getByRole('button', { name: 'Done searching', exact: true }).click();
   await expect(page.getByRole('heading', { name: /your best shot/i })).toBeVisible();
@@ -101,6 +107,23 @@ test('solo demo runs through selection and automatic voting progression', async 
     await expect(page.getByText('THE GROUP HAS SPOKEN')).toHaveCount(0);
   }
   await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
+  await capture(page, 'scores');
+  await page.getByRole('button', { name: 'Skip the souvenirs' }).click();
+  await assertGameViewport(page);
+  await page.getByRole('button', { name: 'Keep looking' }).click();
+  await readyAndAdvance(page);
+  await expect(page.getByRole('heading', { name: 'Your souvenirs' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'I’m ready', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Next souvenirs page' }).click();
+  await expect(page.getByText('Souvenir 2 of 2')).toBeVisible();
+  await readyAndAdvance(page);
+  await expect(page.getByRole('heading', { name: 'Mika’s souvenirs' })).toBeVisible();
+  await capture(page, 'souvenirs');
+  await page.getByRole('button', { name: 'Next souvenirs page' }).click();
+  await readyAndAdvance(page);
+  await expect(page.getByRole('heading', { name: 'Jules’s souvenirs' })).toBeVisible();
+  await readyAndAdvance(page);
+  await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   await capture(page, 'results');
   // Same room, same crew, a fresh round with the rules kept.
   const room = page.url();
@@ -111,6 +134,7 @@ test('solo demo runs through selection and automatic voting progression', async 
   expect(fresh.phase).toBe('lobby');
   expect(fresh.categories).toEqual([]);
   expect(fresh.findings).toEqual([]);
+  expect(fresh.souvenirs).toEqual([]);
   expect(fresh.players.every((p: { score: number }) => p.score === 0)).toBe(true);
   expect(fresh.settings.proximityEnabled).toBe(true);
   await expect(page.getByRole('checkbox', { name: /Neighbourhood radio/ })).toBeChecked();
@@ -173,6 +197,13 @@ test('two peers share readiness, category edits reset agreement, and refresh res
       await api.send(id, { type: 'save-finding', categoryId: session.categories[0].id, view: { panoramaId: 'test-panorama', position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1 } });
     });
   }
+  await second.evaluate(async () => {
+    const modulePath = '/src/lib/api/index.ts';
+    const { api } = await import(modulePath);
+    const id = location.hash.split('/').at(-1)!;
+    for (const panoramaId of ['goat', 'statue'])
+      await api.send(id, { type: 'save-souvenir', view: { panoramaId, position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1 } });
+  });
   // Saving evidence resumes searching and clears the previous "done" vote.
   await expect(page.getByRole('button', { name: 'Done searching', exact: true })).toBeVisible();
   await expect(second.getByText('0 of 2 ready')).toBeVisible();
@@ -211,6 +242,19 @@ test('two peers share readiness, category edits reset agreement, and refresh res
   await expect(page.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   await expect(second.getByRole('heading', { name: 'The final tally' })).toBeVisible();
   expect((await state(page)).results).toHaveLength(2);
+  // The whole crew sees the same souvenir, and either peer can turn the page.
+  await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Linus’s souvenirs' })).toBeVisible();
+  await expect(second.getByRole('heading', { name: 'Your souvenirs' })).toBeVisible();
+  await page.getByRole('button', { name: 'Next souvenirs page' }).click();
+  await expect(second.getByText('Souvenir 2 of 2')).toBeVisible();
+  await second.reload();
+  await expect(second.getByText('Souvenir 2 of 2')).toBeVisible();
+  await assertGameViewport(second);
+  await page.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  await second.getByRole('button', { name: 'I’m ready', exact: true }).click();
+  await expect(page.getByRole('button', { name: /Back to the meeting point/ })).toBeVisible();
   await second.getByRole('button', { name: 'Leave room', exact: true }).click();
   await second.getByRole('dialog').getByRole('button', { name: 'Leave room', exact: true }).click();
   await expect.poll(async () => (await state(page)).players.find((p: { name: string }) => p.name === 'Linus').left).toBe(true);
@@ -221,7 +265,7 @@ test('home and rules are usable with keyboard and fit a desktop viewport', async
   await page.getByRole('button', { name: 'How to play' }).click();
   await expect(page.getByRole('dialog')).toBeVisible();
   await assertGameViewport(page);
-  for (let step = 1; step < 4; step++) {
+  for (let step = 1; step < 5; step++) {
     await page.getByRole('button', { name: 'Next rules page' }).click();
     await assertGameViewport(page);
   }
@@ -247,6 +291,7 @@ test('maximum crew, long categories, and twelve candidates remain accessible wit
     const view = { panoramaId: 'fixture', position: { lat: 52.52, lng: 13.405 }, heading: 90, pitch: 0, zoom: 1, demoScene: 0 };
     room.findings = Array.from({ length: 12 }, (_, i) => ({ id: `candidate-${i}`, playerId: me.id, categoryId: 'category-0', view: { ...view, demoScene: i % 3 }, createdAt: Date.now() }));
     for (const player of room.players.slice(1)) room.findings.push({ id: `finding-${player.id}`, playerId: player.id, categoryId: 'category-0', view, createdAt: Date.now() });
+    room.souvenirs = Array.from({ length: 12 }, (_, i) => ({ id: `souvenir-${i}`, playerId: me.id, view: { ...view, demoScene: i % 3 }, createdAt: Date.now() }));
     room.selections = { [me.id]: { 'category-0': 'candidate-0' } };
     room.queue = room.findings.map(f => f.id);
     room.revision++;
@@ -284,6 +329,11 @@ test('maximum crew, long categories, and twelve candidates remain accessible wit
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Next saved views page' }).click();
   await expect(page.getByRole('button', { name: 'Remove saved view 12', exact: true })).toBeVisible();
   await assertGameViewport(page);
+  await page.getByRole('button', { name: 'Souvenirs', exact: true }).click();
+  for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Next souvenirs page' }).click();
+  await expect(page.getByRole('button', { name: 'Remove souvenir 12', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: /Keep souvenir/ })).toBeDisabled();
+  await assertGameViewport(page);
   await phase('selection');
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Next candidates page' }).click();
   await page.getByRole('button', { name: /View 12 Choose this view instead/ }).click();
@@ -297,6 +347,9 @@ test('maximum crew, long categories, and twelve candidates remain accessible wit
   await phase('review');
   await expect(page.getByRole('button', { name: 'Matches', exact: true })).toBeVisible();
   await assertGameViewport(page);
+  await phase('scores');
+  await phase('souvenirs');
+  await expect(page.getByText('Souvenir 1 of 12')).toBeVisible();
   await phase('finished');
   await expect(page.locator('.score-row')).toHaveCount(6);
   await page.getByRole('button', { name: 'Next scoreboard page' }).click();

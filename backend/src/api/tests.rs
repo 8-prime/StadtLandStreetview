@@ -1317,3 +1317,90 @@ async fn a_finished_room_can_restart_in_the_lobby() {
     assert_eq!(state["phase"], "lobby");
     assert_eq!(state["categories"], json!([]));
 }
+
+#[tokio::test]
+async fn souvenirs_are_saved_and_showcased_over_http() {
+    let (_, app) = app();
+    let (id, alex) = create(&app, "Alex", None).await;
+    let mika = join(&app, &id, "Mika", None).await;
+    let base = format!("/api/sessions/{id}");
+    ready_all(&app, &id, &[&alex, &mika]).await;
+    request(
+        &app,
+        Method::POST,
+        &format!("{base}/categories"),
+        Some(&alex),
+        Some(json!({ "text": "Door" })),
+    )
+    .await;
+    ready_all(&app, &id, &[&alex, &mika]).await;
+    let souvenirs = format!("{base}/souvenirs");
+    let mut ids = Vec::new();
+    for panorama in ["removed", "goat", "statue"] {
+        let reply = request(
+            &app,
+            Method::POST,
+            &souvenirs,
+            Some(&alex),
+            Some(json!({ "view": viewpoint(panorama) })),
+        )
+        .await;
+        assert_eq!(reply.status, StatusCode::CREATED);
+        ids.push(reply.id());
+    }
+    let mut demo = viewpoint("demo");
+    demo["demoScene"] = json!(1);
+    let reply = request(
+        &app,
+        Method::POST,
+        &souvenirs,
+        Some(&alex),
+        Some(json!({ "view": demo })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::UNPROCESSABLE_ENTITY);
+    for (cookie, status) in [
+        (&mika, StatusCode::NOT_FOUND),
+        (&alex, StatusCode::NO_CONTENT),
+    ] {
+        let path = format!("{souvenirs}/{}", ids[0]);
+        let reply = request(&app, Method::DELETE, &path, Some(cookie), None).await;
+        assert_eq!(reply.status, status);
+    }
+    assert!(
+        !snapshot(&app, &id, &mika)
+            .await
+            .to_string()
+            .contains("goat")
+    );
+    // Searching, selection, and the scores.
+    for _ in 0..3 {
+        ready_all(&app, &id, &[&alex, &mika]).await;
+    }
+    let state = snapshot(&app, &id, &mika).await;
+    assert_eq!(state["phase"], "souvenirs");
+    assert_eq!(state["showcase"]["souvenir"]["id"], ids[1]);
+    assert!(!state.to_string().contains("statue"));
+    let reply = request(
+        &app,
+        Method::PUT,
+        &format!("{base}/ready"),
+        Some(&mika),
+        Some(json!({ "stepId": state["stepId"], "ready": true })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::CONFLICT);
+    let reply = request(
+        &app,
+        Method::PUT,
+        &format!("{base}/showcase"),
+        Some(&mika),
+        Some(json!({ "stepId": state["stepId"], "index": 1 })),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::NO_CONTENT);
+    let state = snapshot(&app, &id, &alex).await;
+    assert_eq!(state["showcase"]["souvenir"]["id"], ids[2]);
+    ready_all(&app, &id, &[&alex, &mika]).await;
+    assert_eq!(snapshot(&app, &id, &alex).await["phase"], "finished");
+}
