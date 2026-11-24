@@ -274,6 +274,43 @@ impl SessionManager {
         .await
     }
 
+    pub async fn add_souvenir(
+        &self,
+        session_id: &str,
+        player_id: Uuid,
+        view: Viewpoint,
+    ) -> Result<Uuid> {
+        self.update(session_id, |session, now| {
+            session.add_souvenir(player_id, view, now)
+        })
+        .await
+    }
+
+    pub async fn delete_souvenir(
+        &self,
+        session_id: &str,
+        player_id: Uuid,
+        souvenir_id: Uuid,
+    ) -> Result<()> {
+        self.update(session_id, |session, _| {
+            session.delete_souvenir(player_id, souvenir_id)
+        })
+        .await
+    }
+
+    pub async fn show_souvenir(
+        &self,
+        session_id: &str,
+        player_id: Uuid,
+        step_id: Uuid,
+        index: usize,
+    ) -> Result<()> {
+        self.update(session_id, |session, _| {
+            session.show_souvenir(player_id, step_id, index)
+        })
+        .await
+    }
+
     pub async fn vote(
         &self,
         session_id: &str,

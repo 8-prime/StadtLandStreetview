@@ -9,7 +9,7 @@ This contract is implemented by the Axum backend in `backend/src/api/` and the f
 - The cookie is shared across browser tabs and maps to separate memberships per room. Explicit leave revokes only that room's membership; disconnecting preserves it. Use separate browser profiles to test different players in the same room.
 - JSON request/response bodies use camelCase. Timestamps are Unix **milliseconds**.
 - Actions return `204 No Content` (or a JSON body with a successful response). Errors use a non-2xx status and `{ "message": "Human-readable explanation" }`.
-- Creation returns `201` with `{ id }`; adding a category or finding returns `201` with its `{ id }`. Missing/invalid credentials return `401`, forbidden actions `403`, missing resources `404`, and phase/stale-step conflicts `409`. Malformed requests and extraction failures also use the JSON error envelope.
+- Creation returns `201` with `{ id }`; adding a category, finding, or souvenir returns `201` with its `{ id }`. Missing/invalid credentials return `401`, forbidden actions `403`, missing resources `404`, and phase/stale-step conflicts `409`. Malformed requests and extraction failures also use the JSON error envelope.
 - Session IDs are URL-safe, case-insensitive room codes. The join form normalizes typed codes to uppercase. Returned IDs should use a canonical uppercase form.
 - Enforce permissions, current step, ownership, deadlines, and input validation on the server. The browser's disabled controls are only presentation.
 
@@ -20,7 +20,7 @@ All paths below are relative to `/api`.
 | Method | Path | Request / response |
 | --- | --- | --- |
 | POST | `/sessions` | `{ name, durationSeconds, settings?: { proximityEnabled?: boolean, bannedCountries?: string[] } }` → `{ id }`; establish membership; radio defaults off, no banned countries |
-| POST | `/sessions/{sessionId}/restart` | `{ stepId }` of the finished step; return the room to a fresh lobby |
+| POST | `/sessions/{sessionId}/restart` | `{ stepId }` of the current scores, souvenirs, or finished step; return the room to a fresh lobby |
 | PATCH | `/sessions/{sessionId}/settings` | `{ durationSeconds?, proximityEnabled?, bannedCountries? }`; lobby only, any member; omitted fields are unchanged |
 | POST | `/sessions/{sessionId}/join` | `{ name }`; establish or resume membership |
 | POST | `/sessions/{sessionId}/leave` | Explicitly leave; preserve submissions and scores |
@@ -33,6 +33,9 @@ All paths below are relative to `/api`.
 | POST | `/sessions/{sessionId}/findings` | `{ categoryId, view }` |
 | DELETE | `/sessions/{sessionId}/findings/{findingId}` | Own finding only |
 | PUT | `/sessions/{sessionId}/selections/{categoryId}` | `{ findingId }`; own finding in this category only |
+| POST | `/sessions/{sessionId}/souvenirs` | `{ view }` → `{ id }`; searching only |
+| DELETE | `/sessions/{sessionId}/souvenirs/{souvenirId}` | Own souvenir only; searching only |
+| PUT | `/sessions/{sessionId}/showcase` | `{ stepId, index }`; show this souvenir of the presenting player to everyone |
 | PUT | `/sessions/{sessionId}/review/{itemId}/vote` | `{ vote: "accept" \| "reject" }` |
 
 There are no host progression endpoints, separate viewer endpoints, or endpoints to browse other findings during review.
@@ -49,7 +52,7 @@ There are no host progression endpoints, separate viewer endpoints, or endpoints
 }
 ```
 
-Findings have server-generated `id`, `playerId`, and `createdAt` in addition to `categoryId` and `view`. The `demoScene` field in the TypeScript model is local-demo-only; HTTP submissions reject it.
+Findings have server-generated `id`, `playerId`, and `createdAt` in addition to `categoryId` and `view`. Souvenirs have the same fields without `categoryId`. The `demoScene` field in the TypeScript model is local-demo-only; HTTP submissions reject it.
 
 ## State snapshot
 
@@ -59,7 +62,7 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 | --- | --- |
 | `id`, `revision` | Session ID and monotonically increasing state revision |
 | `stepId` | Opaque ID for the current readiness agreement |
-| `phase` | `lobby`, `categories`, `searching`, `selection`, `review`, or `finished` |
+| `phase` | `lobby`, `categories`, `searching`, `selection`, `review`, `scores`, `souvenirs`, or `finished` |
 | `meId` | Authenticated player's ID |
 | `demo` | `false` for backend rooms |
 | `settings` | `{ proximityEnabled: boolean, bannedCountries: string[] }`; set at creation, editable in the lobby, and shared by all players. Codes are sorted, upper-case ISO 3166-1 alpha-2 |
@@ -69,8 +72,10 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 | `categories` | Ordered `{ id, text }[]` |
 | `ownFindings` | Requesting player's candidates only |
 | `selections` | Requesting player's `{ [categoryId]: findingId }` mapping |
+| `ownSouvenirs` | Requesting player's souvenirs only |
 | `review` | Current shared item, or `null` outside review |
 | `results` | Completed finding results only |
+| `showcase` | Current shared souvenir, or `null` outside `souvenirs` |
 
 `review` contains:
 
@@ -90,7 +95,19 @@ The complete frontend types are in `frontend/src/lib/api/types.ts`. `SessionStat
 
 `ReviewResult` is `{ itemId, categoryId, playerId, accepted, accepts, rejects }`. The item ID can be the finding ID if findings occur only once in the review queue.
 
-Do not expose other players' candidate collections, future review findings, private votes, or unrevealed vote tallies in snapshots or WebSocket messages. Everyone's `review.id` is the same; personalized fields such as `ownVote` differ.
+`showcase` contains:
+
+```ts
+{
+  souvenir: Souvenir;   // Only the souvenir currently shown to everyone
+  index: number;        // Zero-based index among the presenting player's souvenirs
+  total: number;
+  playerIndex: number;  // Zero-based index among players with souvenirs
+  playerTotal: number;
+}
+```
+
+Do not expose other players' candidate collections, future review findings, souvenirs that are not on screen, private votes, or unrevealed vote tallies in snapshots or WebSocket messages. Everyone's `review.id` is the same; personalized fields such as `ownVote` differ.
 
 ## WebSocket behavior
 
@@ -137,21 +154,25 @@ Positions expire after 15 seconds without an update, are cleared on disconnect/l
 1. All active members ready in the lobby → category collection. Any member can change the duration, radio, or off-limits countries in the lobby with `PATCH /settings`. An actual change resets readiness and issues a new `stepId`; an update that repeats the current values changes nothing. Invalid values reject the whole update. Settings are locked once the lobby ends (`409`).
 2. All ready with at least one category → searching. Establish one server deadline.
 3. Deadline reached or all active members ready during searching → final selection. Search readiness is reversible until everyone is ready; no findings are required to mark done.
-4. All ready after selection → first review item, or finished if nobody submitted a finding.
-5. All eligible voters have voted and the finding's owner is ready (unless they left) → calculate the result, award any point, and immediately open the next item, or finish after the last item. There is no intermediate result-reveal step.
-6. Any member can restart a finished room with `POST /restart`. The room returns to the lobby with the same players, colors, duration, and settings. Categories, findings, selections, starts, votes, results, and scores are cleared, and readiness resets with a new `stepId`. Departed players stay departed. A repeat request while already in the lobby is a no-op; otherwise a stale `stepId` or an unfinished round returns `409`.
+4. All ready after selection → first review item, or the end of the review (step 6) if nobody submitted a finding.
+5. All eligible voters have voted and the finding's owner is ready (unless they left) → calculate the result, award any point, and immediately open the next item, or end the review after the last item. There is no intermediate result-reveal step.
+6. End of the review → `scores` if any player, including departed ones, has souvenirs; otherwise `finished`.
+7. All ready in `scores` → `souvenirs`, with one step per player with souvenirs, in join order. `PUT /showcase` sets the shared page. Any active member may call it; it keeps the `stepId` and readiness. A stale `stepId` returns `409`, and an index outside the presenting player's souvenirs returns `404`. Marking ready returns `409` unless that player's last souvenir is on screen. All ready → the next player, or `finished` after the last one.
+8. Any member can restart a room in `scores`, `souvenirs`, or `finished` with `POST /restart`. Restarting before `finished` skips the remaining souvenirs for everyone. The room returns to the lobby with the same players, colors, duration, and settings. Categories, findings, souvenirs, selections, starts, votes, results, and scores are cleared, and readiness resets with a new `stepId`. Departed players stay departed. A repeat request while already in the lobby is a no-op; otherwise a stale `stepId` or an earlier phase returns `409`.
 
 Reset readiness and assign a new `stepId` at each transition. A category edit or membership change during setup also invalidates readiness and should issue a new `stepId`. Reject stale readiness requests; do not apply them to a newer step. Readiness requests set a value rather than toggling it, making retries idempotent.
 
 - Categories are editable only during collection. The prototype allows any peer to edit.
 - Candidates can be saved only while searching, before the deadline or unanimous early completion. Saving a candidate clears that player's search readiness. Removing candidates is allowed during searching and selection.
+- Souvenirs can be saved and removed only while searching; both clear that player's search readiness. They are never voted on or scored, and off-limits countries do not apply to them.
 - The first saved candidate is the default selection. Removing the selected candidate selects the next remaining one. Zero candidates implicitly means no submission.
 - Selecting or deleting a candidate clears that player's readiness during searching and selection.
 - Lock final selections when review begins. Build the review queue category-first, then player-first; skip missing submissions.
 - Players cannot vote on their own findings. Casting a vote sets the voter's readiness automatically; only the owner uses the readiness endpoint during review. Reject readiness requests from other players, including attempts to unset readiness independently of a vote.
 - Votes can change until everyone has responded; changing a vote keeps the voter ready. Reject vote requests for a previous item after progression, and clear votes and readiness for the new item.
 - Accept if accept votes outnumber reject votes. Ties and zero votes fail. Award one point per accepted finding, once.
+- Retain departed players' souvenirs in the showcase.
 - Final scores count accepted matches. The UI presents tied leaders as joint winners.
 - Disconnection preserves membership and the readiness requirement. Explicit leave excludes that player from future readiness/voting requirements but retains their findings and score. Re-evaluate progression after a leave.
 
-Search durations range from 1 minute to 24 hours (`durationSeconds` 60–86400). The UI offers 1, 5, 10, 15, or 20 minutes plus a custom hours/minutes value. It limits names to 24 characters and category text to 100, and supports up to 12 peers, 12 categories, and 12 saved candidates per player/category. These are prototype limits and can be revised together with the server.
+Search durations range from 1 minute to 24 hours (`durationSeconds` 60–86400). The UI offers 1, 5, 10, 15, or 20 minutes plus a custom hours/minutes value. It limits names to 24 characters and category text to 100, and supports up to 12 peers, 12 categories, 12 saved candidates per player/category, and 12 souvenirs per player. These are prototype limits and can be revised together with the server.

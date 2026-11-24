@@ -21,6 +21,7 @@
     import Search from "./screens/Search.svelte";
     import Selection from "./screens/Selection.svelte";
     import Review from "./screens/Review.svelte";
+    import Souvenirs from "./screens/Souvenirs.svelte";
     import Results from "./screens/Results.svelte";
     import MapsSession from "./lib/maps/MapsSession.svelte";
 
@@ -56,8 +57,14 @@
             text: "Everyone sees the same locked view. Your vote counts as ready; only the owner marks ready. Once everyone responds, the next finding opens automatically. More matches than rejections earns a point. Most points wins.",
             mood: "winner" as const,
         },
+        {
+            title: "Show your souvenirs.",
+            text: "Spotted something glorious that fits no category? Keep it as a souvenir while searching. After the scores, everyone looks through them together, one spotter at a time. No votes, no points.",
+            mood: "idle" as const,
+        },
     ];
     let leaveDialog: HTMLDialogElement;
+    let skipDialog: HTMLDialogElement;
     let rulesDialog: HTMLDialogElement;
     let unsubscribe: (() => void) | undefined;
     let routeVersion = 0;
@@ -73,6 +80,12 @@
                 : 2,
     );
     let me = $derived(session?.players.find((p) => p.id === session?.meId));
+    // The crew looks at the whole set before moving on; undoing ready always works.
+    let souvenirsLeft = $derived(
+        !me?.ready && session?.showcase
+            ? session.showcase.total - session.showcase.index - 1
+            : 0,
+    );
     let canReady = $derived(
         Boolean(
             session &&
@@ -81,7 +94,8 @@
             !(
                 session.phase === "review" &&
                 session.review?.finding.playerId !== session.meId
-            ),
+            ) &&
+            !souvenirsLeft,
         ),
     );
     let nextLabel = $derived(
@@ -93,6 +107,14 @@
                 ? "end searching and pick our evidence"
                 : session?.phase === "selection"
                   ? "start the review"
+                  : session?.phase === "scores"
+                    ? "unpack the souvenirs"
+                    : session?.phase === "souvenirs"
+                      ? session.showcase &&
+                        session.showcase.playerIndex + 1 <
+                            session.showcase.playerTotal
+                          ? "see the next spotter’s souvenirs"
+                          : "wrap up the round"
                   : session?.review &&
                       session.review.index + 1 === session.review.total
                     ? "see the final scores"
@@ -218,6 +240,11 @@
             busy = false;
         }
     }
+    async function skipSouvenirs() {
+        if (!session) return;
+        await act({ type: "restart", stepId: session.stepId });
+        skipDialog.close();
+    }
     async function copyInvite() {
         try {
             await navigator.clipboard.writeText(location.href);
@@ -228,6 +255,11 @@
             );
         }
     }
+    // Someone else may move the group on while this is open.
+    $effect(() => {
+        if (session?.phase !== "scores" && session?.phase !== "souvenirs")
+            skipDialog?.close();
+    });
     onMount(() => {
         void route();
         window.addEventListener("hashchange", route);
@@ -243,7 +275,7 @@
 <svelte:head
     ><title
         >{session
-            ? `${session.id} · ${session.phase === "review" ? "Judge the finds" : session.phase === "searching" ? "Hit the streets" : "The spotters club"}`
+            ? `${session.id} · ${session.phase === "review" ? "Judge the finds" : session.phase === "searching" ? "Hit the streets" : session.phase === "souvenirs" ? "Street souvenirs" : "The spotters club"}`
             : "Find the weird. Bring your friends."} — Stadt Land Streetview</title
     ></svelte:head
 >
@@ -382,10 +414,16 @@
                                 {busy}
                                 onaction={act}
                             />
-                        {:else if session.phase === "finished"}<Results
+                        {:else if session.phase === "souvenirs" && session.showcase}<Souvenirs
+                                {session}
+                                onaction={act}
+                                onskip={() => skipDialog.showModal()}
+                            />
+                        {:else if session.phase === "scores" || session.phase === "finished"}<Results
                                 {session}
                                 {busy}
                                 connected={connection === "connected"}
+                                onskip={() => skipDialog.showModal()}
                                 onhome={() =>
                                     session &&
                                     act({
@@ -397,6 +435,9 @@
                                 {session}
                                 {busy}
                                 disabled={!canReady}
+                                reason={souvenirsLeft
+                                    ? `${souvenirsLeft} more ${souvenirsLeft === 1 ? "souvenir" : "souvenirs"} to see first. Anyone can turn the page.`
+                                    : ""}
                                 next={nextLabel}
                                 onready={() =>
                                     session &&
@@ -424,6 +465,26 @@
                 >Stay with the group</button
             ><button class="button primary" disabled={busy} onclick={leave}
                 >Leave room <Icon name="arrow" size={17} /></button
+            >
+        </div>
+    </div>
+</dialog>
+<dialog bind:this={skipDialog} class="modal">
+    <div class="modal-body">
+        <span class="round-icon"><Icon name="map" size={25} /></span>
+        <h2>Skip the souvenirs?</h2>
+        <p>
+            This takes the whole crew back to the meeting point. Souvenirs
+            nobody has seen yet will be gone.
+        </p>
+        <div class="modal-actions">
+            <button class="button secondary" onclick={() => skipDialog.close()}
+                >Keep looking</button
+            ><button
+                class="button primary"
+                disabled={busy || connection !== "connected"}
+                onclick={skipSouvenirs}
+                >Skip for everyone <Icon name="arrow" size={17} /></button
             >
         </div>
     </div>
@@ -459,7 +520,7 @@
                     >Ready is reversible until everyone’s ready.</span
                 ><Pager
                     page={rulesPage}
-                    pages={4}
+                    pages={rules.length}
                     label="rules"
                     onpage={(value) => (rulesPage = value)}
                 />

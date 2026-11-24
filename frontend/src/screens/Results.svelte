@@ -8,11 +8,14 @@
     export let connected = true;
     // Returns the whole room to a fresh lobby with the same crew and rules.
     export let onhome: () => void;
+    // Offers the same, with a confirmation, while souvenirs are still to come.
+    export let onskip: () => void;
     let page = 0;
     const size = 6;
     $: ranked = [...session.players].sort((a, b) => b.score - a.score);
     $: winners = ranked.filter((p) => p.score === ranked[0]?.score);
     $: noFindings = session.results.length === 0;
+    $: souvenirsNext = session.phase === "scores";
     $: pages = Math.max(1, Math.ceil(ranked.length / size));
 </script>
 
@@ -21,9 +24,11 @@
         <span class="eyebrow">ALL EVIDENCE EXAMINED</span>
         <h1>CASE <span>CLOSED.</span></h1>
     </div>
-    <span class="phase-note"
-        ><Icon name="trophy" /> Good eyes. Questionable methods.</span
-    >
+    {#if souvenirsNext}<button class="button secondary" onclick={onskip}
+            >Skip the souvenirs</button
+        >{:else}<span class="phase-note"
+            ><Icon name="trophy" /> Good eyes. Questionable methods.</span
+        >{/if}
 </section>
 <div class="results-layout">
     <section class="winner-poster panel">
@@ -113,7 +118,7 @@
         </div>
     </section>
 </div>
-<footer class="results-actions">
+{#if !souvenirsNext}<footer class="results-actions">
     <span
         ><Icon name="eye" size={21} /> YOU’LL NEVER LOOK AT A PARKED CAR THE SAME
         WAY.</span
@@ -123,4 +128,4 @@
         onclick={onhome}
         >Back to the meeting point <Icon name="arrow" /></button
     >
-</footer>
+</footer>{/if}

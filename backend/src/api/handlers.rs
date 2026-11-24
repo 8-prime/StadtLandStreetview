@@ -267,6 +267,60 @@ pub(super) async fn select(
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
+pub(super) struct SouvenirRequest {
+    view: Viewpoint,
+}
+
+pub(super) async fn add_souvenir(
+    State(state): State<AppState>,
+    member: Member,
+    ApiJson(info): ApiJson<SouvenirRequest>,
+) -> ApiResult<(StatusCode, Json<IdResponse<Uuid>>)> {
+    let id = state
+        .sessions
+        .add_souvenir(&member.session_id, member.player_id, info.view)
+        .await?;
+    Ok((StatusCode::CREATED, Json(IdResponse { id })))
+}
+
+pub(super) async fn delete_souvenir(
+    State(state): State<AppState>,
+    member: Member,
+    ApiPath((_, souvenir)): ApiPath<(String, Uuid)>,
+) -> ApiResult<StatusCode> {
+    state
+        .sessions
+        .delete_souvenir(&member.session_id, member.player_id, souvenir)
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(super) struct ShowcaseRequest {
+    step_id: Uuid,
+    index: usize,
+}
+
+pub(super) async fn show_souvenir(
+    State(state): State<AppState>,
+    member: Member,
+    ApiJson(info): ApiJson<ShowcaseRequest>,
+) -> ApiResult<StatusCode> {
+    state
+        .sessions
+        .show_souvenir(
+            &member.session_id,
+            member.player_id,
+            info.step_id,
+            info.index,
+        )
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub(super) struct VoteRequest {
     vote: Vote,
 }

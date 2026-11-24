@@ -89,6 +89,18 @@ pub fn router(state: AppState) -> Router {
             put(handlers::select),
         )
         .route(
+            "/sessions/{session_id}/souvenirs",
+            post(handlers::add_souvenir),
+        )
+        .route(
+            "/sessions/{session_id}/souvenirs/{souvenir_id}",
+            axum::routing::delete(handlers::delete_souvenir),
+        )
+        .route(
+            "/sessions/{session_id}/showcase",
+            put(handlers::show_souvenir),
+        )
+        .route(
             "/sessions/{session_id}/review/{item_id}/vote",
             put(handlers::vote),
         )

@@ -1,5 +1,12 @@
 export type Phase =
-  "lobby" | "categories" | "searching" | "selection" | "review" | "finished";
+  | "lobby"
+  | "categories"
+  | "searching"
+  | "selection"
+  | "review"
+  | "scores" // The leaderboard before the souvenir showcase; skipped without souvenirs.
+  | "souvenirs"
+  | "finished";
 export type Vote = "accept" | "reject";
 export type Connection =
   "connecting" | "connected" | "reconnecting" | "offline";
@@ -57,6 +64,21 @@ export interface Finding {
   view: Viewpoint;
   createdAt: number;
 }
+// Something fun outside the categories. Never voted on or scored.
+export interface Souvenir {
+  id: string;
+  playerId: string;
+  view: Viewpoint;
+  createdAt: number;
+}
+// The souvenir currently shown to everyone.
+export interface Showcase {
+  souvenir: Souvenir;
+  index: number; // Position among the presenting player's souvenirs.
+  total: number;
+  playerIndex: number;
+  playerTotal: number;
+}
 export interface ReviewResult {
   itemId: string;
   categoryId: string;
@@ -94,13 +116,15 @@ export interface SessionState {
   categories: Category[];
   ownFindings: Finding[];
   selections: Record<string, string>;
+  ownSouvenirs: Souvenir[];
   review: ReviewItem | null;
   results: ReviewResult[];
+  showcase: Showcase | null;
 }
 
 export type Action =
   | { type: "ready"; stepId: string; ready: boolean }
-  // Finished rounds only: back to a fresh lobby with the same crew and rules.
+  // Once all votes are in: back to a fresh lobby with the same crew and rules.
   | { type: "restart"; stepId: string }
   // Lobby only. Omitted fields keep their current value.
   | {
@@ -115,6 +139,11 @@ export type Action =
   | { type: "save-finding"; categoryId: string; view: Viewpoint }
   | { type: "delete-finding"; findingId: string }
   | { type: "select"; categoryId: string; findingId: string }
+  // Searching only.
+  | { type: "save-souvenir"; view: Viewpoint }
+  | { type: "delete-souvenir"; souvenirId: string }
+  // Turns the page for the whole crew; any player may do it.
+  | { type: "show-souvenir"; stepId: string; index: number }
   | { type: "vote"; itemId: string; vote: Vote };
 
 export interface SessionApi {

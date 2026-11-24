@@ -48,9 +48,9 @@ Each player starts the search at a private random town chosen by the server (`Se
 
 The **Off-limits countries** picker applies its changes when the dialog closes. Country names come from the browser's `Intl.DisplayNames`, so no name data is bundled. During searching, a room with banned countries reports Street View positions like the radio does. The server replies with a `territory` frame, and while the player is inside a banned country the save button is disabled and explains why. The server rejects such findings regardless. The local prototype draws starts from a small built-in city list and does not check country boundaries.
 
-Saved viewpoints preserve panorama ID, position, heading, pitch, and zoom. Search, selection, and review use a 16:10 viewport. Selection/review views are locked to the saved framing. Panorama availability can change; unavailable views show an explanatory message.
+Saved viewpoints preserve panorama ID, position, heading, pitch, and zoom. Search, selection, review, and the souvenir showcase use a 16:10 viewport. Selection, review, and showcase views are locked to the saved framing. Panorama availability can change; unavailable views show an explanatory message.
 
-Each player keeps one map and one panorama alive for the current match in their browser tab. Screens move the same canvas between exploration, selection, and review, updating the panorama and camera instead of constructing another viewer per finding. Empty categories and illustrated scenes do not discard these objects. Leaving the room or changing rooms/player identity releases them; refreshing the page creates new instances. A player resuming directly into selection/review only creates a panorama. This avoids repeated instance loads counted by [Google Maps billing](https://developers.google.com/maps/faq#usage_maploads); imagery still loads as the player navigates.
+Each player keeps one map and one panorama alive for the current match in their browser tab. Screens move the same canvas between exploration, selection, review, and the souvenir showcase, updating the panorama and camera instead of constructing another viewer per finding. Empty categories and illustrated scenes do not discard these objects. Leaving the room or changing rooms/player identity releases them; refreshing the page creates new instances. A player resuming directly into selection/review only creates a panorama. This avoids repeated instance loads counted by [Google Maps billing](https://developers.google.com/maps/faq#usage_maploads); imagery still loads as the player navigates.
 
 ## Two development modes
 
@@ -100,7 +100,7 @@ See [`../docs/api.md`](../docs/api.md) for endpoint payloads, cookie identity, s
 ```text
 src/
   App.svelte          Routing, connection lifecycle, actions, shared shell
-  screens/            Home, lobby, categories, search, selection, review, results
+  screens/            Home, lobby, categories, search, selection, review, souvenirs, results
   lib/
     api/types.ts      Shared frontend DTOs and action types
     api/http.ts       Axum transport adapter

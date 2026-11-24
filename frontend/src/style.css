@@ -846,6 +846,10 @@ code {
     gap: 20px;
     color: var(--paper);
 }
+.phase-heading > .button.secondary {
+    flex-shrink: 0;
+    color: var(--ink);
+}
 .phase-heading > div {
     min-width: 0;
 }

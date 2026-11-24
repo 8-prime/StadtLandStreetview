@@ -36,7 +36,7 @@ Four assignments per page, shared editing, and suggestions from the field. Readi
 
 ## Hit the streets
 
-The timer, category rail, fixed-aspect map aperture, save action, and paginated private evidence strip are visible together.
+The timer, category rail, fixed-aspect map aperture, save and souvenir actions, and paginated private evidence strip are visible together.
 
 ![Search workspace with the timer and save controls inside the viewport](images/search.png)
 
@@ -53,6 +53,12 @@ One server-controlled finding for everyone. The evidence stays locked while the 
 ![Synchronized voting screen with match and reject controls](images/review.png)
 
 Once everyone responds, the finding is scored and the next vote opens immediately. There is no separate verdict screen or second readiness step.
+
+## Street souvenirs
+
+Fun finds that fit no category, kept while searching and shown after the scores. One spotter at a time, with a shared page that anyone can turn. No votes, no points.
+
+![Souvenir showcase with the presenting spotter and shared page controls](images/souvenirs.png)
 
 ## Case closed
 

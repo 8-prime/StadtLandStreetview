@@ -1273,3 +1273,180 @@ fn a_finished_room_restarts_as_a_fresh_lobby_with_the_same_crew_and_rules() {
             .is_some()
     );
 }
+
+#[test]
+fn souvenirs_are_private_limited_to_searching_and_clear_readiness() {
+    let (mut session, players, _) = searching(2, 1);
+    let step = session.step_id;
+    session.ready(players[0], step, true, at(2000)).unwrap();
+    let first = session.add_souvenir(players[0], view(), at(2000)).unwrap();
+    assert!(!session.players[&players[0]].is_ready);
+    session.ready(players[0], step, true, at(2000)).unwrap();
+    assert!(session.delete_souvenir(players[1], first).is_err());
+    session.delete_souvenir(players[0], first).unwrap();
+    assert!(!session.players[&players[0]].is_ready);
+    for _ in 0..MAX_SOUVENIRS {
+        session.add_souvenir(players[0], view(), at(2000)).unwrap();
+    }
+    assert!(matches!(
+        session.add_souvenir(players[0], view(), at(2000)),
+        Err(SessionError::Conflict(_))
+    ));
+    let mut invalid = view();
+    invalid.zoom = 99.0;
+    assert!(session.add_souvenir(players[1], invalid, at(2000)).is_err());
+    let own = session.snapshot(players[0], at(2000)).unwrap();
+    assert_eq!(own.own_souvenirs.len(), MAX_SOUVENIRS);
+    assert!(own.own_findings.is_empty() && own.selections.is_empty());
+    let other = session.snapshot(players[1], at(2000)).unwrap();
+    assert!(other.own_souvenirs.is_empty() && other.showcase.is_none());
+    session.tick(at(61000));
+    assert!(session.add_souvenir(players[0], view(), at(61000)).is_err());
+    let kept = session.players[&players[0]].souvenirs[0].id;
+    assert!(session.delete_souvenir(players[0], kept).is_err());
+}
+
+#[test]
+fn souvenirs_may_come_from_off_limits_countries() {
+    let (mut session, players, category) = banned_room(1, &["DE"]);
+    assert!(
+        session
+            .add_finding(players[0], category, view(), at(2000))
+            .is_err()
+    );
+    session.add_souvenir(players[0], view(), at(2000)).unwrap();
+}
+
+#[test]
+fn souvenirs_are_shown_player_by_player_after_the_scores() {
+    let (mut session, players, categories) = searching(4, 1);
+    let finding = session
+        .add_finding(players[0], categories[0], view(), at(2000))
+        .unwrap();
+    // Saving order is irrelevant: players present in join order. Player 1 saved nothing.
+    for (player, panorama) in [(3, "last"), (0, "first-a"), (2, "departed"), (0, "first-b")] {
+        let mut souvenir = view();
+        souvenir.panorama_id = panorama.into();
+        session
+            .add_souvenir(players[player], souvenir, at(2000))
+            .unwrap();
+    }
+    session.tick(at(61000));
+    ready_all(&mut session);
+    for voter in &players[1..] {
+        session
+            .vote(*voter, finding, Vote::Accept, at(62000))
+            .unwrap();
+    }
+    session
+        .ready(players[0], session.step_id, true, at(62000))
+        .unwrap();
+    assert_eq!(session.phase, Phase::Scores);
+    assert_eq!(session.players[&players[0]].score, 1);
+    let scores = session.snapshot(players[1], at(62000)).unwrap();
+    assert!(scores.review.is_none() && scores.showcase.is_none());
+    assert!(
+        session
+            .show_souvenir(players[0], session.step_id, 0)
+            .is_err()
+    );
+    // Departed players keep their place in the showcase.
+    session.leave(players[2], at(62000)).unwrap();
+    ready_all(&mut session);
+    assert_eq!(session.phase, Phase::Souvenirs);
+
+    let step = session.step_id;
+    let encoded = serde_json::to_value(session.snapshot(players[1], at(62000)).unwrap()).unwrap();
+    assert_eq!(encoded["phase"], "souvenirs");
+    assert_eq!(
+        encoded["showcase"]["souvenir"]["playerId"],
+        players[0].to_string()
+    );
+    assert_eq!(
+        encoded["showcase"]["souvenir"]["view"]["panoramaId"],
+        "first-a"
+    );
+    assert_eq!(encoded["showcase"]["total"], 2);
+    assert_eq!(encoded["showcase"]["playerTotal"], 3);
+    for hidden in ["first-b", "departed", "last"] {
+        assert!(!encoded.to_string().contains(hidden));
+    }
+    // Everyone sees the whole set before the group moves on.
+    assert!(matches!(
+        session.ready(players[0], step, true, at(62000)),
+        Err(SessionError::Conflict(_))
+    ));
+    assert!(session.show_souvenir(players[0], step, 2).is_err());
+    assert!(
+        session
+            .show_souvenir(players[0], Uuid::new_v4(), 1)
+            .is_err()
+    );
+    assert!(session.show_souvenir(players[2], step, 1).is_err());
+    // Any active member may turn the page; repeats are harmless.
+    session.show_souvenir(players[1], step, 1).unwrap();
+    session.show_souvenir(players[3], step, 1).unwrap();
+    assert_eq!(session.step_id, step);
+    let shown = session.snapshot(players[0], at(62000)).unwrap();
+    assert_eq!(shown.showcase.unwrap().souvenir.view.panorama_id, "first-b");
+    // Going back for another look keeps existing readiness.
+    session.ready(players[0], step, true, at(62000)).unwrap();
+    session.show_souvenir(players[0], step, 0).unwrap();
+    assert!(session.players[&players[0]].is_ready);
+    session.show_souvenir(players[0], step, 1).unwrap();
+    ready_all(&mut session);
+    assert_ne!(session.step_id, step);
+    assert!(session.show_souvenir(players[0], step, 0).is_err());
+
+    for (player, panorama, index) in [(2, "departed", 1), (3, "last", 2)] {
+        let showcase = session
+            .snapshot(players[0], at(62000))
+            .unwrap()
+            .showcase
+            .unwrap();
+        assert_eq!(showcase.souvenir.player_id, players[player]);
+        assert_eq!(showcase.souvenir.view.panorama_id, panorama);
+        assert_eq!((showcase.index, showcase.player_index), (0, index));
+        ready_all(&mut session);
+    }
+    assert_eq!(session.phase, Phase::Finished);
+    let finished = session.snapshot(players[0], at(62000)).unwrap();
+    assert!(finished.showcase.is_none());
+    assert_eq!(finished.players[0].score, 1);
+    session.restart(players[0], session.step_id).unwrap();
+    let fresh = session.snapshot(players[0], at(62000)).unwrap();
+    assert!(fresh.own_souvenirs.is_empty());
+}
+
+#[test]
+fn souvenirs_show_without_findings_and_can_be_skipped_or_unblocked_by_leaving() {
+    let (mut session, players, _) = searching(2, 1);
+    session.add_souvenir(players[0], view(), at(2000)).unwrap();
+    session.add_souvenir(players[1], view(), at(2000)).unwrap();
+    session.tick(at(61000));
+    ready_all(&mut session);
+    assert_eq!(session.phase, Phase::Scores);
+    let scores = session.step_id;
+    session.ready(players[0], scores, true, at(62000)).unwrap();
+    session.leave(players[1], at(62000)).unwrap();
+    assert_eq!(session.phase, Phase::Souvenirs);
+    assert!(session.restart(players[0], scores).is_err());
+    session.restart(players[0], session.step_id).unwrap();
+    assert_eq!(session.phase, Phase::Lobby);
+
+    // Nothing carries over into the next round's showcase.
+    ready_all(&mut session);
+    session.add_category(players[0], "Bench".into()).unwrap();
+    ready_all(&mut session);
+    session.add_souvenir(players[0], view(), at(2000)).unwrap();
+    for _ in 0..3 {
+        ready_all(&mut session);
+    }
+    let showcase = session
+        .snapshot(players[0], at(2000))
+        .unwrap()
+        .showcase
+        .unwrap();
+    assert_eq!((showcase.index, showcase.total), (0, 1));
+    assert_eq!((showcase.player_index, showcase.player_total), (0, 1));
+}

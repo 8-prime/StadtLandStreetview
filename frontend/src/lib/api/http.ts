@@ -3,6 +3,7 @@ import {
   type Action,
   type SessionApi,
   type SessionState,
+  type Viewpoint,
 } from "./types";
 
 const sockets = new Map<string, WebSocket>();
@@ -28,6 +29,13 @@ async function request<T>(
     );
   }
   return response.status === 204 ? (undefined as T) : response.json();
+}
+
+function requireRealView(view: Viewpoint) {
+  if (view.demoScene !== undefined)
+    throw new Error(
+      "Illustrated demo views cannot be submitted to the server.",
+    );
 }
 
 function actionRequest(id: string, action: Action) {
@@ -57,16 +65,12 @@ function actionRequest(id: string, action: Action) {
         `${base}/categories/${encodeURIComponent(action.categoryId)}`,
         "DELETE",
       );
-    case "save-finding": {
-      if (action.view.demoScene !== undefined)
-        throw new Error(
-          "Illustrated demo views cannot be submitted to the server.",
-        );
+    case "save-finding":
+      requireRealView(action.view);
       return request(`${base}/findings`, "POST", {
         categoryId: action.categoryId,
         view: action.view,
       });
-    }
     case "delete-finding":
       return request(
         `${base}/findings/${encodeURIComponent(action.findingId)}`,
@@ -78,6 +82,19 @@ function actionRequest(id: string, action: Action) {
         "PUT",
         { findingId: action.findingId },
       );
+    case "save-souvenir":
+      requireRealView(action.view);
+      return request(`${base}/souvenirs`, "POST", { view: action.view });
+    case "delete-souvenir":
+      return request(
+        `${base}/souvenirs/${encodeURIComponent(action.souvenirId)}`,
+        "DELETE",
+      );
+    case "show-souvenir":
+      return request(`${base}/showcase`, "PUT", {
+        stepId: action.stepId,
+        index: action.index,
+      });
     case "vote":
       return request(
         `${base}/review/${encodeURIComponent(action.itemId)}/vote`,

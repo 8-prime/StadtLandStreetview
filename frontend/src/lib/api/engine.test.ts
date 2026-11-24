@@ -504,7 +504,11 @@ describe("peer progression and findings", () => {
     applyAction(
       r,
       "alex",
-      { type: "save-finding", categoryId: r.categories[0].id, view: demoView() },
+      {
+        type: "save-finding",
+        categoryId: r.categories[0].id,
+        view: demoView(),
+      },
       2000,
     );
     tick(r, 1000 + 5400 * 1000);
@@ -513,8 +517,16 @@ describe("peer progression and findings", () => {
       const finding = currentFinding(r)!;
       for (const p of r.players)
         if (p.id !== finding.playerId)
-          applyAction(r, p.id, { type: "vote", itemId: finding.id, vote: "accept" });
-      applyAction(r, finding.playerId, { type: "ready", stepId: r.stepId, ready: true });
+          applyAction(r, p.id, {
+            type: "vote",
+            itemId: finding.id,
+            vote: "accept",
+          });
+      applyAction(r, finding.playerId, {
+        type: "ready",
+        stepId: r.stepId,
+        ready: true,
+      });
     }
     expect(r.phase).toBe("finished");
     expect(r.players.some((p) => p.score > 0)).toBe(true);
@@ -539,6 +551,97 @@ describe("peer progression and findings", () => {
 });
 
 describe("search starts", () => {
+  it("keeps souvenirs private, limited, and editable only while searching", () => {
+    const r = searching();
+    const mika = r.players[1].id;
+    const keep = () =>
+      applyAction(
+        r,
+        "alex",
+        { type: "save-souvenir", view: demoView(1) },
+        2000,
+      );
+    applyAction(
+      r,
+      "alex",
+      { type: "ready", stepId: r.stepId, ready: true },
+      2000,
+    );
+    keep();
+    expect(r.players[0].ready).toBe(false);
+    const souvenirId = snapshot(r, "alex").ownSouvenirs[0].id;
+    expect(snapshot(r, mika).ownSouvenirs).toEqual([]);
+    expect(() =>
+      applyAction(r, mika, { type: "delete-souvenir", souvenirId }, 2000),
+    ).toThrow("not found");
+    applyAction(r, "alex", { type: "delete-souvenir", souvenirId }, 2000);
+    for (let i = 0; i < 12; i++) keep();
+    expect(keep).toThrow("12 souvenirs");
+    expect(snapshot(r, "alex").ownFindings).toEqual([]);
+    tick(r, r.searchEndsAt!);
+    expect(keep).toThrow("over");
+    expect(() =>
+      applyAction(r, "alex", {
+        type: "delete-souvenir",
+        souvenirId: snapshot(r, "alex").ownSouvenirs[0].id,
+      }),
+    ).toThrow("packed");
+  });
+
+  it("shows souvenirs player by player after the scores, with a shared page", () => {
+    const r = room();
+    readyAll(r);
+    readyAll(r);
+    const [alex, mika, jules] = r.players.map((p) => p.id);
+    for (const id of [jules, alex, alex])
+      applyAction(r, id, { type: "save-souvenir", view: demoView() }, 2000);
+    readyAll(r);
+    readyAll(r);
+    expect(r.phase).toBe("scores");
+    expect(snapshot(r, alex).showcase).toBeNull();
+    readyAll(r);
+    expect(r.phase).toBe("souvenirs");
+    const first = r.stepId;
+    const shown = () => snapshot(r, mika).showcase!;
+    expect(shown()).toMatchObject({
+      index: 0,
+      total: 2,
+      playerIndex: 0,
+      playerTotal: 2,
+    });
+    expect(shown().souvenir.playerId).toBe(alex);
+    expect(() =>
+      applyAction(r, alex, { type: "ready", stepId: first, ready: true }),
+    ).toThrow("souvenirs first");
+    const show = (stepId: string, index: number) =>
+      applyAction(r, mika, { type: "show-souvenir", stepId, index });
+    expect(() => show(first, 2)).toThrow("not found");
+    show(first, 1);
+    show(first, 1);
+    expect(shown().index).toBe(1);
+    readyAll(r);
+    expect(() => show(first, 0)).toThrow("moved on");
+    expect(shown()).toMatchObject({ index: 0, total: 1, playerIndex: 1 });
+    expect(shown().souvenir.playerId).toBe(jules);
+    readyAll(r);
+    expect(r.phase).toBe("finished");
+    expect(snapshot(r, alex).showcase).toBeNull();
+  });
+
+  it("can skip the souvenirs for everyone and starts the next round without them", () => {
+    const r = room();
+    readyAll(r);
+    readyAll(r);
+    applyAction(r, "alex", { type: "save-souvenir", view: demoView() }, 2000);
+    for (let i = 0; i < 2; i++) readyAll(r);
+    expect(r.phase).toBe("scores");
+    applyAction(r, r.players[1].id, { type: "restart", stepId: r.stepId });
+    expect(r.phase).toBe("lobby");
+    expect(snapshot(r, "alex").ownSouvenirs).toEqual([]);
+    for (let i = 0; i < 4; i++) readyAll(r);
+    expect(r.phase).toBe("finished");
+  });
+
   it("gives local players distinct starts outside banned countries and keeps the demo illustrated", () => {
     const local = createRoom("LOCAL1", "Alex", "alex", 60, false, {
       proximityEnabled: false,
